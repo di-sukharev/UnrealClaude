@@ -1,0 +1,65 @@
+# Unreal Engine Plugin .gitignore
+
+# Build outputs (but NOT plugin Binaries - those are needed for distribution)
+PackagedPlugin/
+Intermediate/
+DerivedDataCache/
+Build/
+
+# IDE files
+.vs/
+.vscode/
+*.suo
+*.user
+*.sln
+*.vcxproj
+*.vcxproj.filters
+
+# Unreal generated files
+*.VC.db
+*.opensdf
+*.sdf
+*.cachefile
+
+# Node.js (for MCP bridge)
+node_modules/
+npm-debug.log
+yarn-error.log
+package-lock.json
+
+# Claude Code session data
+.claude/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+*.lnk
+nul
+
+# Temporary files
+*.tmp
+*.temp
+*.log
+*.bak
+*~
+
+# Debug symbols (optional - can include for debugging)
+# *.pdb
+
+# Build intermediates (NOT final binaries)
+*.obj
+*.o
+*.exp
+
+# Archives
+*.zip
+*.rar
+*.7z
+*.tar.gz
