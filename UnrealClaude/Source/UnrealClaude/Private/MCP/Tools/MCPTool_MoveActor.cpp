@@ -3,6 +3,7 @@
 #include "MCPTool_MoveActor.h"
 #include "MCP/MCPParamValidator.h"
 #include "UnrealClaudeModule.h"
+#include "UnrealClaudeUtils.h"
 #include "Editor.h"
 #include "Engine/World.h"
 #include "GameFramework/Actor.h"
@@ -10,16 +11,11 @@
 
 FMCPToolResult FMCPTool_MoveActor::Execute(const TSharedRef<FJsonObject>& Params)
 {
-	// Validate we're in editor
-	if (!GEditor)
+	// Validate editor context using base class
+	UWorld* World = nullptr;
+	if (auto Error = ValidateEditorContext(World))
 	{
-		return FMCPToolResult::Error(TEXT("Editor not available"));
-	}
-
-	UWorld* World = GEditor->GetEditorWorldContext().World();
-	if (!World)
-	{
-		return FMCPToolResult::Error(TEXT("No active world"));
+		return Error.GetValue();
 	}
 
 	// Get actor name
@@ -36,18 +32,8 @@ FMCPToolResult FMCPTool_MoveActor::Execute(const TSharedRef<FJsonObject>& Params
 		return FMCPToolResult::Error(ValidationError);
 	}
 
-	// Find the actor
-	AActor* Actor = nullptr;
-	for (TActorIterator<AActor> It(World); It; ++It)
-	{
-		AActor* TestActor = *It;
-		if (TestActor && (TestActor->GetName() == ActorName || TestActor->GetActorLabel() == ActorName))
-		{
-			Actor = TestActor;
-			break;
-		}
-	}
-
+	// Find the actor using base class helper
+	AActor* Actor = FindActorByNameOrLabel(World, ActorName);
 	if (!Actor)
 	{
 		return FMCPToolResult::Error(FString::Printf(TEXT("Actor not found: %s"), *ActorName));
@@ -143,37 +129,16 @@ FMCPToolResult FMCPTool_MoveActor::Execute(const TSharedRef<FJsonObject>& Params
 		return FMCPToolResult::Error(TEXT("No transform changes specified. Provide location, rotation, or scale."));
 	}
 
-	// Mark dirty
+	// Mark dirty using base class helper
 	Actor->MarkPackageDirty();
-	World->MarkPackageDirty();
+	MarkWorldDirty(World);
 
-	// Build result with new transform
+	// Build result with new transform using shared utilities
 	TSharedPtr<FJsonObject> ResultData = MakeShared<FJsonObject>();
 	ResultData->SetStringField(TEXT("actor"), Actor->GetName());
-
-	// Add new location
-	FVector FinalLocation = Actor->GetActorLocation();
-	TSharedPtr<FJsonObject> LocationResult = MakeShared<FJsonObject>();
-	LocationResult->SetNumberField(TEXT("x"), FinalLocation.X);
-	LocationResult->SetNumberField(TEXT("y"), FinalLocation.Y);
-	LocationResult->SetNumberField(TEXT("z"), FinalLocation.Z);
-	ResultData->SetObjectField(TEXT("location"), LocationResult);
-
-	// Add new rotation
-	FRotator FinalRotation = Actor->GetActorRotation();
-	TSharedPtr<FJsonObject> RotationResult = MakeShared<FJsonObject>();
-	RotationResult->SetNumberField(TEXT("pitch"), FinalRotation.Pitch);
-	RotationResult->SetNumberField(TEXT("yaw"), FinalRotation.Yaw);
-	RotationResult->SetNumberField(TEXT("roll"), FinalRotation.Roll);
-	ResultData->SetObjectField(TEXT("rotation"), RotationResult);
-
-	// Add new scale
-	FVector FinalScale = Actor->GetActorScale3D();
-	TSharedPtr<FJsonObject> ScaleResult = MakeShared<FJsonObject>();
-	ScaleResult->SetNumberField(TEXT("x"), FinalScale.X);
-	ScaleResult->SetNumberField(TEXT("y"), FinalScale.Y);
-	ScaleResult->SetNumberField(TEXT("z"), FinalScale.Z);
-	ResultData->SetObjectField(TEXT("scale"), ScaleResult);
+	ResultData->SetObjectField(TEXT("location"), UnrealClaudeJsonUtils::VectorToJson(Actor->GetActorLocation()));
+	ResultData->SetObjectField(TEXT("rotation"), UnrealClaudeJsonUtils::RotatorToJson(Actor->GetActorRotation()));
+	ResultData->SetObjectField(TEXT("scale"), UnrealClaudeJsonUtils::VectorToJson(Actor->GetActorScale3D()));
 
 	// Build change description
 	TArray<FString> Changes;
