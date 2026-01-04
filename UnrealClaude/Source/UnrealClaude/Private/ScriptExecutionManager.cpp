@@ -2,6 +2,7 @@
 
 #include "ScriptExecutionManager.h"
 #include "UnrealClaudeModule.h"
+#include "UnrealClaudeUtils.h"
 #include "JsonUtils.h"
 #include "MCP/MCPParamValidator.h"
 
@@ -343,18 +344,8 @@ FScriptExecutionResult FScriptExecutionManager::ExecutePython(
 	// Execute via console command
 	FString Command = FString::Printf(TEXT("py \"%s\""), *FilePath);
 
-	// Capture output
-	class FStringOutputDevice : public FOutputDevice
-	{
-	public:
-		FString Output;
-		virtual void Serialize(const TCHAR* V, ELogVerbosity::Type Verbosity, const FName& Category) override
-		{
-			Output += V;
-			Output += TEXT("\n");
-		}
-	} OutputDevice;
-
+	// Capture output using shared utility
+	FStringOutputDevice OutputDevice;
 	GEditor->Exec(World, *Command, OutputDevice);
 
 	// Add to history
@@ -363,13 +354,13 @@ FScriptExecutionResult FScriptExecutionManager::ExecutePython(
 	Entry.Filename = ScriptName + TEXT(".py");
 	Entry.Description = Description;
 	Entry.bSuccess = true; // Assume success - Python errors would be in output
-	Entry.ResultMessage = OutputDevice.Output.Left(200);
+	Entry.ResultMessage = OutputDevice.GetTrimmedOutput().Left(200);
 	Entry.FilePath = FilePath;
 	AddToHistory(Entry);
 
 	return FScriptExecutionResult::Success(
 		TEXT("Python script executed"),
-		OutputDevice.Output
+		OutputDevice.GetTrimmedOutput()
 	);
 }
 
@@ -392,18 +383,8 @@ FScriptExecutionResult FScriptExecutionManager::ExecuteConsole(
 	TArray<FString> Commands;
 	ScriptContent.ParseIntoArrayLines(Commands, true);
 
-	// Output capture
-	class FStringOutputDevice : public FOutputDevice
-	{
-	public:
-		FString Output;
-		virtual void Serialize(const TCHAR* V, ELogVerbosity::Type Verbosity, const FName& Category) override
-		{
-			Output += V;
-			Output += TEXT("\n");
-		}
-	} OutputDevice;
-
+	// Output capture using shared utility
+	FStringOutputDevice OutputDevice;
 	FString AllOutput;
 	int32 ExecutedCount = 0;
 
@@ -432,9 +413,9 @@ FScriptExecutionResult FScriptExecutionManager::ExecuteConsole(
 			continue;
 		}
 
-		OutputDevice.Output.Empty();
+		OutputDevice.Clear();
 		GEditor->Exec(World, *Command, OutputDevice);
-		AllOutput += FString::Printf(TEXT("> %s\n%s"), *Command, *OutputDevice.Output);
+		AllOutput += FString::Printf(TEXT("> %s\n%s\n"), *Command, *OutputDevice.GetTrimmedOutput());
 		ExecutedCount++;
 	}
 

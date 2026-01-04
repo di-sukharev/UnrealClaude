@@ -11,16 +11,11 @@
 
 FMCPToolResult FMCPTool_SetProperty::Execute(const TSharedRef<FJsonObject>& Params)
 {
-	// Validate we're in editor
-	if (!GEditor)
+	// Validate editor context using base class
+	UWorld* World = nullptr;
+	if (auto Error = ValidateEditorContext(World))
 	{
-		return FMCPToolResult::Error(TEXT("Editor not available"));
-	}
-
-	UWorld* World = GEditor->GetEditorWorldContext().World();
-	if (!World)
-	{
-		return FMCPToolResult::Error(TEXT("No active world"));
+		return Error.GetValue();
 	}
 
 	// Get parameters
@@ -56,8 +51,8 @@ FMCPToolResult FMCPTool_SetProperty::Execute(const TSharedRef<FJsonObject>& Para
 	}
 	TSharedPtr<FJsonValue> Value = Params->TryGetField(TEXT("value"));
 
-	// Find the actor
-	AActor* Actor = FindActorByName(World, ActorName);
+	// Find the actor using base class helper
+	AActor* Actor = FindActorByNameOrLabel(World, ActorName);
 	if (!Actor)
 	{
 		return FMCPToolResult::Error(FString::Printf(TEXT("Actor not found: %s"), *ActorName));
@@ -70,9 +65,9 @@ FMCPToolResult FMCPTool_SetProperty::Execute(const TSharedRef<FJsonObject>& Para
 		return FMCPToolResult::Error(ErrorMessage);
 	}
 
-	// Mark dirty
+	// Mark dirty using base class helper
 	Actor->MarkPackageDirty();
-	World->MarkPackageDirty();
+	MarkWorldDirty(World);
 
 	// Build result
 	TSharedPtr<FJsonObject> ResultData = MakeShared<FJsonObject>();
@@ -83,19 +78,6 @@ FMCPToolResult FMCPTool_SetProperty::Execute(const TSharedRef<FJsonObject>& Para
 		FString::Printf(TEXT("Set property '%s' on actor '%s'"), *PropertyPath, *Actor->GetName()),
 		ResultData
 	);
-}
-
-AActor* FMCPTool_SetProperty::FindActorByName(UWorld* World, const FString& Name)
-{
-	for (TActorIterator<AActor> It(World); It; ++It)
-	{
-		AActor* Actor = *It;
-		if (Actor && (Actor->GetName() == Name || Actor->GetActorLabel() == Name))
-		{
-			return Actor;
-		}
-	}
-	return nullptr;
 }
 
 bool FMCPTool_SetProperty::SetPropertyFromJson(UObject* Object, const FString& PropertyPath, const TSharedPtr<FJsonValue>& Value, FString& OutError)

@@ -8,8 +8,6 @@
 
 UnrealClaude integrates the [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) directly into the Unreal Engine 5.7 Editor. Instead of using the API directly, this plugin shells out to the `claude` command-line tool, leveraging your existing Claude Code authentication and capabilities.
 
-![alt text](<Screenshot 2026-01-03 202730.png>)
-
 **Key Features:**
 - **Native Editor Integration** - Chat panel docked in your editor
 - **UE5.7 Context** - System prompts optimized for Unreal Engine 5.7 development
@@ -83,13 +81,8 @@ Engine\Build\BatchFiles\RunUAT.bat BuildPlugin -Plugin="PATH\TO\UnrealClaude.upl
 
 ### Opening the Claude Panel
 
-**Method 1:** Menu → Tools → Claude Assistant
+Menu → Tools → Claude Assistant
 
-**Method 2:** Click the "Claude" button in the toolbar
-
-### Quick Ask
-
-Use **Tools → Quick Ask Claude** for fast questions without opening the full panel. Responses appear as editor notifications.
 
 ### The Chat Interface
 
@@ -97,7 +90,6 @@ Use **Tools → Quick Ask Claude** for fast questions without opening the full p
 - **UE5.7 Context**: Toggle to include/exclude Unreal Engine 5.7 context in prompts
 - **Project Context**: Toggle to include/exclude project-specific context
 - **Clear**: Clear the conversation history
-- **Copy Last**: Copy Claude's last response to clipboard
 
 ### Example Prompts
 
@@ -223,34 +215,6 @@ Ensure you're on Unreal Engine 5.7 for Windows. This plugin uses Windows-specifi
 
 Check if port 8080 is available. The MCP server logs to `LogUnrealClaude`.
 
-## Architecture
-
-```
-UnrealClaude/
-├── Binaries/Win64/                     # Prebuilt binaries (UE 5.7)
-│   ├── UnrealEditor-UnrealClaude.dll
-│   ├── UnrealEditor-UnrealClaude.pdb
-│   └── UnrealEditor.modules
-├── Source/UnrealClaude/
-│   ├── Public/
-│   │   ├── UnrealClaudeModule.h        # Module interface
-│   │   ├── ClaudeCodeRunner.h          # CLI execution (IClaudeRunner)
-│   │   ├── ClaudeSubsystem.h           # Main orchestration
-│   │   ├── ClaudeSessionManager.h      # Conversation persistence
-│   │   ├── ClaudeEditorWidget.h        # Chat UI (Slate)
-│   │   ├── ProjectContext.h            # Project info gathering
-│   │   └── UnrealClaudeCommands.h      # Editor commands
-│   └── Private/
-│       ├── MCP/                        # MCP Server implementation
-│       │   ├── UnrealClaudeMCPServer.h/cpp
-│       │   └── Tools/                  # MCP tool implementations
-│       └── ...
-├── Resources/
-│   └── mcp-bridge/                     # Node.js MCP bridge
-├── Config/
-│   └── FilterPlugin.ini
-└── UnrealClaude.uplugin
-```
 
 ## Known Limitations
 

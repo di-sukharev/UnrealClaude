@@ -3,12 +3,12 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "../MCPToolRegistry.h"
+#include "../MCPToolBase.h"
 
 /**
  * MCP Tool: Set a property on an actor
  */
-class FMCPTool_SetProperty : public IMCPTool
+class FMCPTool_SetProperty : public FMCPToolBase
 {
 public:
 	virtual FMCPToolInfo GetInfo() const override
@@ -27,9 +27,6 @@ public:
 	virtual FMCPToolResult Execute(const TSharedRef<FJsonObject>& Params) override;
 
 private:
-	/** Helper to find an actor by name */
-	AActor* FindActorByName(UWorld* World, const FString& Name);
-
 	/** Helper to set a property value from JSON */
 	bool SetPropertyFromJson(UObject* Object, const FString& PropertyPath, const TSharedPtr<FJsonValue>& Value, FString& OutError);
 };
