@@ -173,6 +173,9 @@ All modifications auto-compile the Blueprint after changes.
 | `capture_viewport` | Capture viewport screenshot |
 | `execute_script` | Execute Python/BP scripts with permission |
 
+<img width="707" height="542" alt="{AB6AC101-4A4C-4607-BFB6-187D49F5E65B}" src="https://github.com/user-attachments/assets/e0c2e398-8fcd-4ac6-ade7-d50870215ec1" />
+
+
 The MCP server runs on port 3000 by default and starts automatically when the editor loads.
 
 ## Configuration
