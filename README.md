@@ -82,21 +82,8 @@ Engine\Build\BatchFiles\RunUAT.bat BuildPlugin -Plugin="PATH\TO\UnrealClaude.upl
 
 ### Opening the Claude Panel
 
-**Method 1:** Menu → Tools → Claude Assistant
+ Menu → Tools → Claude Assistant
 
-**Method 2:** Click the "Claude" button in the toolbar
-
-### Quick Ask
-
-Use **Tools → Quick Ask Claude** for fast questions without opening the full panel. Responses appear as editor notifications.
-
-### The Chat Interface
-
-- **Input Box**: Type your question and press Enter (or Shift+Enter for newlines)
-- **UE5.7 Context**: Toggle to include/exclude Unreal Engine 5.7 context in prompts
-- **Project Context**: Toggle to include/exclude project-specific context
-- **Clear**: Clear the conversation history
-- **Copy Last**: Copy Claude's last response to clipboard
 
 ### Example Prompts
 
