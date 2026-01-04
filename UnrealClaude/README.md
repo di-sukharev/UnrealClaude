@@ -274,7 +274,7 @@ Check if port 3000 is available. The MCP server logs to `LogUnrealClaude`.
 
 ## Contributing
 
-Pull requests welcome! Areas for improvement:
+Feel free to fork and expand for your needs! Future areas for improvement:
 
 - [ ] Mac/Linux support
 - [ ] Streaming output display

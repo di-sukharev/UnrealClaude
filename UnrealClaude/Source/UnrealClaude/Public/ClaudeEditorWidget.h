@@ -128,4 +128,7 @@ private:
 
 	/** Get project context summary for status bar */
 	FText GetProjectContextSummary() const;
+
+	/** Generate MCP tool status message for greeting */
+	FString GenerateMCPStatusMessage() const;
 };

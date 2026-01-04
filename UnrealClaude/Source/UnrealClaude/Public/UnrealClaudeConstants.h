@@ -130,5 +130,22 @@ namespace UnrealClaudeConstants
 
 		/** Maximum output log lines to return */
 		constexpr int32 MaxOutputLogLines = 1000;
+
+		/** Expected MCP tools that should be registered at startup */
+		inline const TArray<FString> ExpectedTools = {
+			TEXT("spawn_actor"),
+			TEXT("get_level_actors"),
+			TEXT("delete_actors"),
+			TEXT("move_actor"),
+			TEXT("set_property"),
+			TEXT("run_console_command"),
+			TEXT("get_output_log"),
+			TEXT("capture_viewport"),
+			TEXT("execute_script"),
+			TEXT("cleanup_scripts"),
+			TEXT("get_script_history"),
+			TEXT("blueprint_query"),
+			TEXT("blueprint_modify")
+		};
 	}
 }

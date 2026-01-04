@@ -4,7 +4,10 @@
 #include "ClaudeCodeRunner.h"
 #include "ClaudeSubsystem.h"
 #include "UnrealClaudeModule.h"
+#include "UnrealClaudeConstants.h"
 #include "ProjectContext.h"
+#include "MCP/UnrealClaudeMCPServer.h"
+#include "MCP/MCPToolRegistry.h"
 #include "Widgets/SClaudeToolbar.h"
 #include "Widgets/SClaudeInputArea.h"
 
@@ -137,7 +140,13 @@ void SClaudeEditorWidget::Construct(const FArguments& InArgs)
 	}
 	else
 	{
-		AddMessage(TEXT("👋 Welcome to Unreal Claude!\n\nI'm ready to help with your UE5.7 project. Ask me about:\n• C++ code patterns and best practices\n• Blueprint integration\n• Engine systems (Nanite, Lumen, GAS, etc.)\n• Debugging and optimization\n\nType your question below and press Enter or click Send."), false);
+		FString WelcomeMessage = TEXT("👋 Welcome to Unreal Claude!\n\nI'm ready to help with your UE5.7 project. Ask me about:\n• C++ code patterns and best practices\n• Blueprint integration\n• Engine systems (Nanite, Lumen, GAS, etc.)\n• Debugging and optimization\n\n");
+
+		// Add MCP tool status
+		WelcomeMessage += GenerateMCPStatusMessage();
+
+		WelcomeMessage += TEXT("\nType your question below and press Enter or click Send.");
+		AddMessage(WelcomeMessage, false);
 	}
 }
 
@@ -541,6 +550,88 @@ FText SClaudeEditorWidget::GetProjectContextSummary() const
 		return FText::FromString(FProjectContextManager::Get().GetContextSummary());
 	}
 	return LOCTEXT("NoContext", "No context gathered");
+}
+
+FString SClaudeEditorWidget::GenerateMCPStatusMessage() const
+{
+	FString StatusMessage = TEXT("─────────────────────────────────\n");
+	StatusMessage += TEXT("MCP Tool Status:\n");
+
+	// Check module availability first to avoid race conditions during startup
+	if (!FUnrealClaudeModule::IsAvailable())
+	{
+		StatusMessage += TEXT("❌ MCP Server: MODULE NOT LOADED\n");
+		StatusMessage += TEXT("─────────────────────────────────");
+		return StatusMessage;
+	}
+
+	// Try to get MCP server
+	TSharedPtr<FUnrealClaudeMCPServer> MCPServer = FUnrealClaudeModule::Get().GetMCPServer();
+
+	if (!MCPServer.IsValid() || !MCPServer->IsRunning())
+	{
+		// MCP server not running
+		StatusMessage += TEXT("❌ MCP Server: NOT RUNNING\n\n");
+		StatusMessage += TEXT("⚠️ MCP tools are unavailable.\n\n");
+		StatusMessage += TEXT("Troubleshooting:\n");
+		StatusMessage += TEXT("  • Check Output Log for MCP errors\n");
+		StatusMessage += TEXT("  • Run: npm install in Resources/mcp-bridge\n");
+		StatusMessage += TEXT("  • Verify port 3000 is available\n");
+		StatusMessage += TEXT("─────────────────────────────────");
+		return StatusMessage;
+	}
+
+	// MCP server running - check tools
+	TSharedPtr<FMCPToolRegistry> ToolRegistry = MCPServer->GetToolRegistry();
+	if (!ToolRegistry.IsValid())
+	{
+		StatusMessage += TEXT("❌ Tool Registry: NOT INITIALIZED\n");
+		StatusMessage += TEXT("─────────────────────────────────");
+		return StatusMessage;
+	}
+
+	// Get registered tools
+	TArray<FMCPToolInfo> RegisteredTools = ToolRegistry->GetAllTools();
+
+	// Build set of registered tool names for quick lookup
+	TSet<FString> RegisteredToolNames;
+	for (const FMCPToolInfo& Tool : RegisteredTools)
+	{
+		RegisteredToolNames.Add(Tool.Name);
+	}
+
+	// Get expected tools from constants
+	const TArray<FString>& ExpectedTools = UnrealClaudeConstants::MCPServer::ExpectedTools;
+
+	// Check each expected tool
+	int32 AvailableCount = 0;
+	TArray<FString> MissingTools;
+
+	for (const FString& ToolName : ExpectedTools)
+	{
+		if (RegisteredToolNames.Contains(ToolName))
+		{
+			StatusMessage += FString::Printf(TEXT("  ✓ %s\n"), *ToolName);
+			AvailableCount++;
+		}
+		else
+		{
+			StatusMessage += FString::Printf(TEXT("  ✗ %s\n"), *ToolName);
+			MissingTools.Add(ToolName);
+		}
+	}
+
+	// Summary
+	StatusMessage += FString::Printf(TEXT("\nTools: %d/%d available\n"), AvailableCount, ExpectedTools.Num());
+
+	if (MissingTools.Num() > 0)
+	{
+		StatusMessage += TEXT("\n⚠️ Some tools missing. Check Output Log.\n");
+	}
+
+	StatusMessage += TEXT("─────────────────────────────────");
+
+	return StatusMessage;
 }
 
 #undef LOCTEXT_NAMESPACE
