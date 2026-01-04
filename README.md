@@ -14,6 +14,7 @@ UnrealClaude integrates the [Claude Code CLI](https://docs.anthropic.com/en/docs
 - **Native Editor Integration** - Chat panel docked in your editor
 - **UE5.7 Context** - System prompts optimized for Unreal Engine 5.7 development
 - **MCP Server** - Model Context Protocol server for external tool integration
+- **Script Execution** - Claude can write, compile (via Live Coding), and execute scripts with your permission
 - **Session Persistence** - Conversation history saved across editor sessions
 - **Project-Aware** - Automatically gathers project context (modules, plugins, assets)
 - **Uses Claude Code Auth** - No separate API key management needed
