@@ -5,6 +5,7 @@ PackagedPlugin/
 Intermediate/
 DerivedDataCache/
 Build/
+CleanPlugin/
 
 # IDE files
 .vs/
