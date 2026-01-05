@@ -301,45 +301,10 @@ If Claude says the MCP tools are in its instructions but not in its function lis
 
 4. **Restart the editor**: After installing npm dependencies, restart Unreal Editor.
 
-## Architecture
-
-```
-UnrealClaude/
-├── Binaries/Win64/                     # Prebuilt binaries (UE 5.7)
-│   ├── UnrealEditor-UnrealClaude.dll
-│   ├── UnrealEditor-UnrealClaude.pdb
-│   └── UnrealEditor.modules
-├── Source/UnrealClaude/
-│   ├── Public/
-│   │   ├── UnrealClaudeModule.h        # Module interface
-│   │   ├── ClaudeCodeRunner.h          # CLI execution (IClaudeRunner)
-│   │   ├── ClaudeSubsystem.h           # Main orchestration
-│   │   ├── ClaudeSessionManager.h      # Conversation persistence
-│   │   ├── ClaudeEditorWidget.h        # Chat UI (Slate)
-│   │   ├── ProjectContext.h            # Project info gathering
-│   │   └── UnrealClaudeCommands.h      # Editor commands
-│   └── Private/
-│       ├── MCP/                        # MCP Server implementation
-│       │   ├── UnrealClaudeMCPServer.h/cpp
-│       │   └── Tools/                  # MCP tool implementations
-│       └── ...
-├── Resources/
-│   └── mcp-bridge/                     # Node.js MCP bridge
-├── Config/
-│   └── FilterPlugin.ini
-└── UnrealClaude.uplugin
-```
-
-## Known Limitations
-
-- **Windows Only**: Uses Windows process APIs
-- **CLI Dependency**: Requires Claude Code CLI installed and authenticated
-- **No Streaming**: Responses appear all at once (CLI limitation)
-- **Single Request**: One request at a time (cancellation available)
 
 ## Contributing
 
-Pull requests welcome! Areas for improvement:
+Feel free to fork for your own needs! Possible areas for improvement:
 
 - [ ] Mac/Linux support
 - [ ] Streaming output display
