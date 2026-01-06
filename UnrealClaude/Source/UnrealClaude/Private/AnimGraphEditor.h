@@ -234,6 +234,68 @@ public:
 
 	static TSharedPtr<FJsonObject> SerializeAnimNodeInfo(UEdGraphNode* Node);
 
+	/**
+	 * Serialize detailed pin information (for inspect_node_pins)
+	 * Includes pin type, sub-category, default value, connected pins, etc.
+	 */
+	static TSharedPtr<FJsonObject> SerializeDetailedPinInfo(UEdGraphPin* Pin);
+
+	// ===== Transition Graph Node Operations (for new MCP tools) =====
+
+	/**
+	 * Get all nodes in a transition graph with detailed pin information
+	 * Used by get_transition_nodes operation
+	 */
+	static TSharedPtr<FJsonObject> GetTransitionGraphNodes(
+		UEdGraph* TransitionGraph,
+		FString& OutError
+	);
+
+	/**
+	 * Get all transition nodes for a state machine (all transitions)
+	 * Used by get_transition_nodes with state_machine parameter only
+	 */
+	static TSharedPtr<FJsonObject> GetAllTransitionNodes(
+		UAnimBlueprint* AnimBP,
+		const FString& StateMachineName,
+		FString& OutError
+	);
+
+	/**
+	 * Set pin default value with type validation
+	 * Returns error if value type doesn't match pin type
+	 */
+	static bool SetPinDefaultValueWithValidation(
+		UEdGraph* Graph,
+		const FString& NodeId,
+		const FString& PinName,
+		const FString& Value,
+		FString& OutError
+	);
+
+	/**
+	 * Validate if a value is compatible with a pin type
+	 */
+	static bool ValidatePinValueType(
+		UEdGraphPin* Pin,
+		const FString& Value,
+		FString& OutError
+	);
+
+	/**
+	 * Create a comparison chain: GetVariable → Comparison → Result
+	 * Auto-chains with AND to existing logic if present
+	 */
+	static TSharedPtr<FJsonObject> CreateComparisonChain(
+		UAnimBlueprint* AnimBP,
+		UEdGraph* TransitionGraph,
+		const FString& VariableName,
+		const FString& ComparisonType,
+		const FString& CompareValue,
+		FVector2D Position,
+		FString& OutError
+	);
+
 private:
 	// Thread-safe counter for unique IDs
 	static volatile int32 NodeIdCounter;

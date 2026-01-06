@@ -992,3 +992,313 @@ TSharedPtr<FJsonObject> FAnimationBlueprintUtils::ExecuteBatchOperations(
 
 	return Result;
 }
+
+// ===== New Operations for MCP Tool Enhancements =====
+
+TSharedPtr<FJsonObject> FAnimationBlueprintUtils::GetTransitionNodes(
+	UAnimBlueprint* AnimBP,
+	const FString& StateMachineName,
+	const FString& FromState,
+	const FString& ToState,
+	FString& OutError)
+{
+	if (!ValidateAnimBlueprintForOperation(AnimBP, OutError))
+	{
+		TSharedPtr<FJsonObject> ErrorResult = MakeShared<FJsonObject>();
+		ErrorResult->SetBoolField(TEXT("success"), false);
+		ErrorResult->SetStringField(TEXT("error"), OutError);
+		return ErrorResult;
+	}
+
+	// If FromState and ToState are empty, get all transitions in state machine
+	if (FromState.IsEmpty() && ToState.IsEmpty())
+	{
+		return FAnimGraphEditor::GetAllTransitionNodes(AnimBP, StateMachineName, OutError);
+	}
+
+	// Get single transition graph nodes
+	UEdGraph* TransitionGraph = FAnimGraphEditor::FindTransitionGraph(
+		AnimBP, StateMachineName, FromState, ToState, OutError);
+
+	if (!TransitionGraph)
+	{
+		TSharedPtr<FJsonObject> ErrorResult = MakeShared<FJsonObject>();
+		ErrorResult->SetBoolField(TEXT("success"), false);
+		ErrorResult->SetStringField(TEXT("error"), OutError);
+		return ErrorResult;
+	}
+
+	TSharedPtr<FJsonObject> Result = FAnimGraphEditor::GetTransitionGraphNodes(TransitionGraph, OutError);
+	Result->SetStringField(TEXT("from_state"), FromState);
+	Result->SetStringField(TEXT("to_state"), ToState);
+
+	return Result;
+}
+
+TSharedPtr<FJsonObject> FAnimationBlueprintUtils::InspectNodePins(
+	UAnimBlueprint* AnimBP,
+	const FString& StateMachineName,
+	const FString& FromState,
+	const FString& ToState,
+	const FString& NodeId,
+	FString& OutError)
+{
+	TSharedPtr<FJsonObject> Result = MakeShared<FJsonObject>();
+
+	if (!ValidateAnimBlueprintForOperation(AnimBP, OutError))
+	{
+		Result->SetBoolField(TEXT("success"), false);
+		Result->SetStringField(TEXT("error"), OutError);
+		return Result;
+	}
+
+	// Find transition graph
+	UEdGraph* TransitionGraph = FAnimGraphEditor::FindTransitionGraph(
+		AnimBP, StateMachineName, FromState, ToState, OutError);
+
+	if (!TransitionGraph)
+	{
+		Result->SetBoolField(TEXT("success"), false);
+		Result->SetStringField(TEXT("error"), OutError);
+		return Result;
+	}
+
+	// Find the node
+	UEdGraphNode* Node = FAnimGraphEditor::FindNodeById(TransitionGraph, NodeId);
+	if (!Node)
+	{
+		OutError = FString::Printf(TEXT("Node with ID '%s' not found"), *NodeId);
+		Result->SetBoolField(TEXT("success"), false);
+		Result->SetStringField(TEXT("error"), OutError);
+		return Result;
+	}
+
+	Result->SetBoolField(TEXT("success"), true);
+	Result->SetStringField(TEXT("node_id"), NodeId);
+	Result->SetStringField(TEXT("node_class"), Node->GetClass()->GetName());
+	Result->SetStringField(TEXT("node_title"), Node->GetNodeTitle(ENodeTitleType::FullTitle).ToString());
+	Result->SetNumberField(TEXT("pos_x"), Node->NodePosX);
+	Result->SetNumberField(TEXT("pos_y"), Node->NodePosY);
+
+	// Detailed pins with full type info
+	TArray<TSharedPtr<FJsonValue>> InputPins;
+	TArray<TSharedPtr<FJsonValue>> OutputPins;
+
+	for (UEdGraphPin* Pin : Node->Pins)
+	{
+		if (!Pin) continue;
+
+		TSharedPtr<FJsonObject> PinObj = FAnimGraphEditor::SerializeDetailedPinInfo(Pin);
+
+		if (Pin->Direction == EGPD_Input)
+		{
+			InputPins.Add(MakeShared<FJsonValueObject>(PinObj));
+		}
+		else
+		{
+			OutputPins.Add(MakeShared<FJsonValueObject>(PinObj));
+		}
+	}
+
+	Result->SetArrayField(TEXT("input_pins"), InputPins);
+	Result->SetArrayField(TEXT("output_pins"), OutputPins);
+
+	return Result;
+}
+
+bool FAnimationBlueprintUtils::SetPinDefaultValue(
+	UAnimBlueprint* AnimBP,
+	const FString& StateMachineName,
+	const FString& FromState,
+	const FString& ToState,
+	const FString& NodeId,
+	const FString& PinName,
+	const FString& Value,
+	FString& OutError)
+{
+	if (!ValidateAnimBlueprintForOperation(AnimBP, OutError))
+	{
+		return false;
+	}
+
+	// Find transition graph
+	UEdGraph* TransitionGraph = FAnimGraphEditor::FindTransitionGraph(
+		AnimBP, StateMachineName, FromState, ToState, OutError);
+
+	if (!TransitionGraph)
+	{
+		return false;
+	}
+
+	bool bResult = FAnimGraphEditor::SetPinDefaultValueWithValidation(
+		TransitionGraph, NodeId, PinName, Value, OutError);
+
+	if (bResult)
+	{
+		MarkAnimBlueprintModified(AnimBP);
+	}
+
+	return bResult;
+}
+
+TSharedPtr<FJsonObject> FAnimationBlueprintUtils::AddComparisonChain(
+	UAnimBlueprint* AnimBP,
+	const FString& StateMachineName,
+	const FString& FromState,
+	const FString& ToState,
+	const FString& VariableName,
+	const FString& ComparisonType,
+	const FString& CompareValue,
+	FVector2D Position,
+	FString& OutError)
+{
+	if (!ValidateAnimBlueprintForOperation(AnimBP, OutError))
+	{
+		TSharedPtr<FJsonObject> ErrorResult = MakeShared<FJsonObject>();
+		ErrorResult->SetBoolField(TEXT("success"), false);
+		ErrorResult->SetStringField(TEXT("error"), OutError);
+		return ErrorResult;
+	}
+
+	// Find transition graph
+	UEdGraph* TransitionGraph = FAnimGraphEditor::FindTransitionGraph(
+		AnimBP, StateMachineName, FromState, ToState, OutError);
+
+	if (!TransitionGraph)
+	{
+		TSharedPtr<FJsonObject> ErrorResult = MakeShared<FJsonObject>();
+		ErrorResult->SetBoolField(TEXT("success"), false);
+		ErrorResult->SetStringField(TEXT("error"), OutError);
+		return ErrorResult;
+	}
+
+	TSharedPtr<FJsonObject> Result = FAnimGraphEditor::CreateComparisonChain(
+		AnimBP, TransitionGraph, VariableName, ComparisonType, CompareValue, Position, OutError);
+
+	if (Result->GetBoolField(TEXT("success")))
+	{
+		MarkAnimBlueprintModified(AnimBP);
+	}
+
+	return Result;
+}
+
+TSharedPtr<FJsonObject> FAnimationBlueprintUtils::ValidateBlueprint(
+	UAnimBlueprint* AnimBP,
+	FString& OutError)
+{
+	TSharedPtr<FJsonObject> Result = MakeShared<FJsonObject>();
+
+	if (!AnimBP)
+	{
+		OutError = TEXT("Invalid Animation Blueprint");
+		Result->SetBoolField(TEXT("success"), false);
+		Result->SetBoolField(TEXT("is_valid"), false);
+		Result->SetStringField(TEXT("error"), OutError);
+		return Result;
+	}
+
+	Result->SetBoolField(TEXT("success"), true);
+	Result->SetStringField(TEXT("blueprint_path"), AnimBP->GetPathName());
+	Result->SetStringField(TEXT("blueprint_name"), AnimBP->GetName());
+
+	// Compile the blueprint to get fresh status
+	FKismetEditorUtilities::CompileBlueprint(AnimBP);
+
+	// Build result based on status
+	bool bIsValid = (AnimBP->Status != BS_Error);
+	Result->SetBoolField(TEXT("is_valid"), bIsValid);
+
+	// Status string
+	FString StatusStr;
+	switch (AnimBP->Status)
+	{
+	case BS_Unknown: StatusStr = TEXT("Unknown"); break;
+	case BS_Dirty: StatusStr = TEXT("Dirty"); break;
+	case BS_Error: StatusStr = TEXT("Error"); break;
+	case BS_UpToDate: StatusStr = TEXT("UpToDate"); break;
+	case BS_UpToDateWithWarnings: StatusStr = TEXT("UpToDateWithWarnings"); break;
+	default: StatusStr = TEXT("Unknown"); break;
+	}
+	Result->SetStringField(TEXT("status"), StatusStr);
+
+	// Collect info about state machines and their states
+	TArray<TSharedPtr<FJsonValue>> StateMachinesInfo;
+	TArray<UAnimGraphNode_StateMachine*> StateMachines = GetAllStateMachines(AnimBP);
+	int32 TotalStates = 0;
+	int32 TotalTransitions = 0;
+
+	for (UAnimGraphNode_StateMachine* SM : StateMachines)
+	{
+		if (!SM) continue;
+
+		TSharedPtr<FJsonObject> SMObj = MakeShared<FJsonObject>();
+		FString SMName = SM->GetStateMachineName();
+		SMObj->SetStringField(TEXT("name"), SMName);
+
+		// Get states
+		FString Error;
+		TArray<UAnimStateNode*> States = FAnimStateMachineEditor::GetAllStates(AnimBP, SMName, Error);
+		SMObj->SetNumberField(TEXT("state_count"), States.Num());
+		TotalStates += States.Num();
+
+		// Get transitions
+		TArray<UAnimStateTransitionNode*> Transitions = FAnimStateMachineEditor::GetAllTransitions(AnimBP, SMName, Error);
+		SMObj->SetNumberField(TEXT("transition_count"), Transitions.Num());
+		TotalTransitions += Transitions.Num();
+
+		StateMachinesInfo.Add(MakeShared<FJsonValueObject>(SMObj));
+	}
+	Result->SetArrayField(TEXT("state_machines"), StateMachinesInfo);
+	Result->SetNumberField(TEXT("total_state_machines"), StateMachines.Num());
+	Result->SetNumberField(TEXT("total_states"), TotalStates);
+	Result->SetNumberField(TEXT("total_transitions"), TotalTransitions);
+
+	// Check for common issues
+	TArray<TSharedPtr<FJsonValue>> IssuesArray;
+	int32 ErrorCount = 0;
+	int32 WarningCount = 0;
+
+	// Check if skeleton is assigned
+	if (!AnimBP->TargetSkeleton)
+	{
+		TSharedPtr<FJsonObject> Issue = MakeShared<FJsonObject>();
+		Issue->SetStringField(TEXT("type"), TEXT("MissingSkeleton"));
+		Issue->SetStringField(TEXT("message"), TEXT("Animation Blueprint has no target skeleton assigned"));
+		Issue->SetStringField(TEXT("severity"), TEXT("Error"));
+		IssuesArray.Add(MakeShared<FJsonValueObject>(Issue));
+		ErrorCount++;
+	}
+
+	// Check for empty state machines
+	for (UAnimGraphNode_StateMachine* SM : StateMachines)
+	{
+		if (!SM) continue;
+		FString Error;
+		FString SMName = SM->GetStateMachineName();
+		TArray<UAnimStateNode*> States = FAnimStateMachineEditor::GetAllStates(AnimBP, SMName, Error);
+		if (States.Num() == 0)
+		{
+			TSharedPtr<FJsonObject> Issue = MakeShared<FJsonObject>();
+			Issue->SetStringField(TEXT("type"), TEXT("EmptyStateMachine"));
+			Issue->SetStringField(TEXT("message"), FString::Printf(TEXT("State machine '%s' has no states"),
+				*SMName));
+			Issue->SetStringField(TEXT("severity"), TEXT("Warning"));
+			IssuesArray.Add(MakeShared<FJsonValueObject>(Issue));
+			WarningCount++;
+		}
+	}
+
+	// Update is_valid based on errors found
+	if (ErrorCount > 0)
+	{
+		bIsValid = false;
+		Result->SetBoolField(TEXT("is_valid"), false);
+	}
+
+	Result->SetArrayField(TEXT("issues"), IssuesArray);
+	Result->SetNumberField(TEXT("error_count"), ErrorCount);
+	Result->SetNumberField(TEXT("warning_count"), WarningCount);
+
+	return Result;
+}

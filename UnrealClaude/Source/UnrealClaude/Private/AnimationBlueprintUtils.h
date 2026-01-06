@@ -394,6 +394,70 @@ public:
 		FString& OutError
 	);
 
+	// ===== New Operations for MCP Tool Enhancements =====
+
+	/**
+	 * Get all nodes in a transition graph (get_transition_nodes)
+	 * Can get single transition or all transitions in a state machine
+	 */
+	static TSharedPtr<FJsonObject> GetTransitionNodes(
+		UAnimBlueprint* AnimBP,
+		const FString& StateMachineName,
+		const FString& FromState,
+		const FString& ToState,
+		FString& OutError
+	);
+
+	/**
+	 * Inspect node pins with detailed type information (inspect_node_pins)
+	 */
+	static TSharedPtr<FJsonObject> InspectNodePins(
+		UAnimBlueprint* AnimBP,
+		const FString& StateMachineName,
+		const FString& FromState,
+		const FString& ToState,
+		const FString& NodeId,
+		FString& OutError
+	);
+
+	/**
+	 * Set pin default value with type validation (set_pin_default_value)
+	 */
+	static bool SetPinDefaultValue(
+		UAnimBlueprint* AnimBP,
+		const FString& StateMachineName,
+		const FString& FromState,
+		const FString& ToState,
+		const FString& NodeId,
+		const FString& PinName,
+		const FString& Value,
+		FString& OutError
+	);
+
+	/**
+	 * Create comparison chain: GetVariable → Comparison → Result (add_comparison_chain)
+	 * Auto-chains with AND to existing logic
+	 */
+	static TSharedPtr<FJsonObject> AddComparisonChain(
+		UAnimBlueprint* AnimBP,
+		const FString& StateMachineName,
+		const FString& FromState,
+		const FString& ToState,
+		const FString& VariableName,
+		const FString& ComparisonType,
+		const FString& CompareValue,
+		FVector2D Position,
+		FString& OutError
+	);
+
+	/**
+	 * Validate blueprint and return detailed diagnostics (validate_blueprint)
+	 */
+	static TSharedPtr<FJsonObject> ValidateBlueprint(
+		UAnimBlueprint* AnimBP,
+		FString& OutError
+	);
+
 private:
 	// Internal helpers
 	static bool ValidateAnimBlueprintForOperation(UAnimBlueprint* AnimBP, FString& OutError);

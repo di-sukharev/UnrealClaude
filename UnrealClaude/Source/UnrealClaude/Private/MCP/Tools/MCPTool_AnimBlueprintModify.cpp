@@ -100,6 +100,27 @@ FMCPToolResult FMCPTool_AnimBlueprintModify::Execute(const TSharedRef<FJsonObjec
 	{
 		return HandleBatch(BlueprintPath, Params);
 	}
+	// NEW operations for enhanced pin/node introspection
+	else if (Operation == TEXT("get_transition_nodes"))
+	{
+		return HandleGetTransitionNodes(BlueprintPath, Params);
+	}
+	else if (Operation == TEXT("inspect_node_pins"))
+	{
+		return HandleInspectNodePins(BlueprintPath, Params);
+	}
+	else if (Operation == TEXT("set_pin_default_value"))
+	{
+		return HandleSetPinDefaultValue(BlueprintPath, Params);
+	}
+	else if (Operation == TEXT("add_comparison_chain"))
+	{
+		return HandleAddComparisonChain(BlueprintPath, Params);
+	}
+	else if (Operation == TEXT("validate_blueprint"))
+	{
+		return HandleValidateBlueprint(BlueprintPath);
+	}
 
 	return FMCPToolResult::Error(FString::Printf(TEXT("Unknown operation: %s"), *Operation));
 }
@@ -775,4 +796,166 @@ FMCPToolResult FMCPTool_AnimBlueprintModify::HandleBatch(const FString& Blueprin
 	}
 
 	return FMCPToolResult::Success(TEXT("Batch operation completed successfully"), Result);
+}
+
+// ===== NEW Handlers for Enhanced Operations =====
+
+FMCPToolResult FMCPTool_AnimBlueprintModify::HandleGetTransitionNodes(const FString& BlueprintPath, const TSharedRef<FJsonObject>& Params)
+{
+	FString Error;
+	UAnimBlueprint* AnimBP = FAnimationBlueprintUtils::LoadAnimBlueprint(BlueprintPath, Error);
+	if (!AnimBP)
+	{
+		return FMCPToolResult::Error(Error);
+	}
+
+	FString StateMachineName = ExtractOptionalString(Params, TEXT("state_machine"));
+	FString FromState = ExtractOptionalString(Params, TEXT("from_state"));
+	FString ToState = ExtractOptionalString(Params, TEXT("to_state"));
+
+	if (StateMachineName.IsEmpty())
+	{
+		return FMCPToolResult::Error(TEXT("state_machine parameter required"));
+	}
+
+	TSharedPtr<FJsonObject> Result = FAnimationBlueprintUtils::GetTransitionNodes(
+		AnimBP, StateMachineName, FromState, ToState, Error);
+
+	if (!Result->GetBoolField(TEXT("success")))
+	{
+		return FMCPToolResult::Error(Result->GetStringField(TEXT("error")));
+	}
+
+	return FMCPToolResult::Success(TEXT("Operation completed"), Result);
+}
+
+FMCPToolResult FMCPTool_AnimBlueprintModify::HandleInspectNodePins(const FString& BlueprintPath, const TSharedRef<FJsonObject>& Params)
+{
+	FString Error;
+	UAnimBlueprint* AnimBP = FAnimationBlueprintUtils::LoadAnimBlueprint(BlueprintPath, Error);
+	if (!AnimBP)
+	{
+		return FMCPToolResult::Error(Error);
+	}
+
+	FString StateMachineName = ExtractOptionalString(Params, TEXT("state_machine"));
+	FString FromState = ExtractOptionalString(Params, TEXT("from_state"));
+	FString ToState = ExtractOptionalString(Params, TEXT("to_state"));
+	FString NodeId = ExtractOptionalString(Params, TEXT("node_id"));
+
+	if (StateMachineName.IsEmpty() || FromState.IsEmpty() || ToState.IsEmpty() || NodeId.IsEmpty())
+	{
+		return FMCPToolResult::Error(TEXT("state_machine, from_state, to_state, and node_id parameters required"));
+	}
+
+	TSharedPtr<FJsonObject> Result = FAnimationBlueprintUtils::InspectNodePins(
+		AnimBP, StateMachineName, FromState, ToState, NodeId, Error);
+
+	if (!Result->GetBoolField(TEXT("success")))
+	{
+		return FMCPToolResult::Error(Result->GetStringField(TEXT("error")));
+	}
+
+	return FMCPToolResult::Success(TEXT("Operation completed"), Result);
+}
+
+FMCPToolResult FMCPTool_AnimBlueprintModify::HandleSetPinDefaultValue(const FString& BlueprintPath, const TSharedRef<FJsonObject>& Params)
+{
+	FString Error;
+	UAnimBlueprint* AnimBP = FAnimationBlueprintUtils::LoadAnimBlueprint(BlueprintPath, Error);
+	if (!AnimBP)
+	{
+		return FMCPToolResult::Error(Error);
+	}
+
+	FString StateMachineName = ExtractOptionalString(Params, TEXT("state_machine"));
+	FString FromState = ExtractOptionalString(Params, TEXT("from_state"));
+	FString ToState = ExtractOptionalString(Params, TEXT("to_state"));
+	FString NodeId = ExtractOptionalString(Params, TEXT("node_id"));
+	FString PinName = ExtractOptionalString(Params, TEXT("pin_name"));
+	FString PinValue = ExtractOptionalString(Params, TEXT("pin_value"));
+
+	if (StateMachineName.IsEmpty() || FromState.IsEmpty() || ToState.IsEmpty() ||
+		NodeId.IsEmpty() || PinName.IsEmpty())
+	{
+		return FMCPToolResult::Error(TEXT("state_machine, from_state, to_state, node_id, and pin_name parameters required"));
+	}
+
+	if (!FAnimationBlueprintUtils::SetPinDefaultValue(
+		AnimBP, StateMachineName, FromState, ToState, NodeId, PinName, PinValue, Error))
+	{
+		return FMCPToolResult::Error(Error);
+	}
+
+	FAnimationBlueprintUtils::CompileAnimBlueprint(AnimBP, Error);
+
+	TSharedPtr<FJsonObject> Result = MakeShared<FJsonObject>();
+	Result->SetBoolField(TEXT("success"), true);
+	Result->SetStringField(TEXT("node_id"), NodeId);
+	Result->SetStringField(TEXT("pin_name"), PinName);
+	Result->SetStringField(TEXT("value"), PinValue);
+	Result->SetStringField(TEXT("message"), FString::Printf(TEXT("Set pin '%s' value to '%s'"), *PinName, *PinValue));
+
+	return FMCPToolResult::Success(TEXT("Operation completed"), Result);
+}
+
+FMCPToolResult FMCPTool_AnimBlueprintModify::HandleAddComparisonChain(const FString& BlueprintPath, const TSharedRef<FJsonObject>& Params)
+{
+	FString Error;
+	UAnimBlueprint* AnimBP = FAnimationBlueprintUtils::LoadAnimBlueprint(BlueprintPath, Error);
+	if (!AnimBP)
+	{
+		return FMCPToolResult::Error(Error);
+	}
+
+	FString StateMachineName = ExtractOptionalString(Params, TEXT("state_machine"));
+	FString FromState = ExtractOptionalString(Params, TEXT("from_state"));
+	FString ToState = ExtractOptionalString(Params, TEXT("to_state"));
+	FString VariableName = ExtractOptionalString(Params, TEXT("variable_name"));
+	FString ComparisonType = ExtractOptionalString(Params, TEXT("comparison_type"), TEXT("Less"));
+	FString CompareValue = ExtractOptionalString(Params, TEXT("compare_value"));
+	FVector2D Position = ExtractPosition(Params);
+
+	if (StateMachineName.IsEmpty() || FromState.IsEmpty() || ToState.IsEmpty() || VariableName.IsEmpty())
+	{
+		return FMCPToolResult::Error(TEXT("state_machine, from_state, to_state, and variable_name parameters required"));
+	}
+
+	TSharedPtr<FJsonObject> Result = FAnimationBlueprintUtils::AddComparisonChain(
+		AnimBP, StateMachineName, FromState, ToState,
+		VariableName, ComparisonType, CompareValue, Position, Error);
+
+	if (!Result->GetBoolField(TEXT("success")))
+	{
+		return FMCPToolResult::Error(Result->GetStringField(TEXT("error")));
+	}
+
+	FAnimationBlueprintUtils::CompileAnimBlueprint(AnimBP, Error);
+
+	return FMCPToolResult::Success(TEXT("Comparison chain created successfully"), Result);
+}
+
+FMCPToolResult FMCPTool_AnimBlueprintModify::HandleValidateBlueprint(const FString& BlueprintPath)
+{
+	FString Error;
+	UAnimBlueprint* AnimBP = FAnimationBlueprintUtils::LoadAnimBlueprint(BlueprintPath, Error);
+	if (!AnimBP)
+	{
+		return FMCPToolResult::Error(Error);
+	}
+
+	TSharedPtr<FJsonObject> Result = FAnimationBlueprintUtils::ValidateBlueprint(AnimBP, Error);
+
+	if (!Result->GetBoolField(TEXT("success")))
+	{
+		return FMCPToolResult::Error(Result->GetStringField(TEXT("error")));
+	}
+
+	FString Message = Result->GetBoolField(TEXT("is_valid"))
+		? TEXT("Blueprint is valid")
+		: FString::Printf(TEXT("Blueprint has %d error(s), %d warning(s)"),
+			static_cast<int32>(Result->GetNumberField(TEXT("error_count"))),
+			static_cast<int32>(Result->GetNumberField(TEXT("warning_count"))));
+
+	return FMCPToolResult::Success(Message, Result);
 }

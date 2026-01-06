@@ -35,6 +35,13 @@
  * - find_animations: Search for compatible animation assets
  * - batch: Execute multiple operations atomically
  *
+ * NEW Operations (Enhanced Pin/Node Introspection):
+ * - get_transition_nodes: List all nodes in transition graph(s) with their pins
+ * - inspect_node_pins: Get detailed pin info for a specific node (types, connections)
+ * - set_pin_default_value: Set pin default value with type validation
+ * - add_comparison_chain: Add GetVariable → Comparison → Result chain (auto-ANDs with existing)
+ * - validate_blueprint: Return compile errors with full diagnostics
+ *
  * Supported Condition Node Types (add_condition_node):
  * - TimeRemaining: Gets time remaining in current animation (output: float)
  * - Greater: Float comparison A > B (inputs: A, B; output: bool)
@@ -70,6 +77,12 @@ public:
 			"Condition Graph (transition logic):\n"
 			"- 'add_condition_node': Add logic node (TimeRemaining, Greater, Less, And, Or, Not, GetVariable)\n"
 			"- 'delete_condition_node', 'connect_condition_nodes', 'connect_to_result'\n\n"
+			"Node/Pin Introspection (NEW):\n"
+			"- 'get_transition_nodes': List all nodes in transition graph(s) with pins\n"
+			"- 'inspect_node_pins': Get detailed pin info for a node (types, values, connections)\n"
+			"- 'set_pin_default_value': Set pin value with type validation\n"
+			"- 'add_comparison_chain': Add GetVariable->Comparison->Result (auto-ANDs with existing)\n"
+			"- 'validate_blueprint': Return compile errors with full diagnostics\n\n"
 			"AnimGraph Connection:\n"
 			"- 'connect_state_machine_to_output': Connect State Machine to AnimGraph Output Pose\n\n"
 			"Animation Assignment:\n"
@@ -79,7 +92,7 @@ public:
 		);
 		Info.Parameters = {
 			FMCPToolParameter(TEXT("blueprint_path"), TEXT("string"), TEXT("Path to the Animation Blueprint (e.g., '/Game/Characters/ABP_Character')"), true),
-			FMCPToolParameter(TEXT("operation"), TEXT("string"), TEXT("Operation: get_info, get_state_machine, create_state_machine, add_state, remove_state, set_entry_state, add_transition, remove_transition, set_transition_duration, set_transition_priority, add_condition_node, delete_condition_node, connect_condition_nodes, connect_to_result, connect_state_machine_to_output, set_state_animation, find_animations, batch"), true),
+			FMCPToolParameter(TEXT("operation"), TEXT("string"), TEXT("Operation: get_info, get_state_machine, create_state_machine, add_state, remove_state, set_entry_state, add_transition, remove_transition, set_transition_duration, set_transition_priority, add_condition_node, delete_condition_node, connect_condition_nodes, connect_to_result, connect_state_machine_to_output, set_state_animation, find_animations, batch, get_transition_nodes, inspect_node_pins, set_pin_default_value, add_comparison_chain, validate_blueprint"), true),
 			FMCPToolParameter(TEXT("state_machine"), TEXT("string"), TEXT("State machine name (for state/transition operations)"), false),
 			FMCPToolParameter(TEXT("state_name"), TEXT("string"), TEXT("State name (for state operations)"), false),
 			FMCPToolParameter(TEXT("from_state"), TEXT("string"), TEXT("Source state name (for transitions)"), false),
@@ -100,7 +113,13 @@ public:
 			FMCPToolParameter(TEXT("parameter_bindings"), TEXT("object"), TEXT("BlendSpace parameter bindings {\"X\": \"Speed\", \"Y\": \"Direction\"}"), false),
 			FMCPToolParameter(TEXT("search_pattern"), TEXT("string"), TEXT("Animation search pattern (for find_animations)"), false),
 			FMCPToolParameter(TEXT("asset_type"), TEXT("string"), TEXT("Asset type filter: AnimSequence, BlendSpace, BlendSpace1D, Montage, All"), false, TEXT("All")),
-			FMCPToolParameter(TEXT("operations"), TEXT("array"), TEXT("Array of operations for batch mode"), false)
+			FMCPToolParameter(TEXT("operations"), TEXT("array"), TEXT("Array of operations for batch mode"), false),
+			// New parameters for enhanced operations
+			FMCPToolParameter(TEXT("variable_name"), TEXT("string"), TEXT("Blueprint variable name (for add_comparison_chain)"), false),
+			FMCPToolParameter(TEXT("comparison_type"), TEXT("string"), TEXT("Comparison type: Greater, Less, GreaterEqual, LessEqual, Equal, NotEqual (for add_comparison_chain)"), false),
+			FMCPToolParameter(TEXT("compare_value"), TEXT("string"), TEXT("Value to compare against (for add_comparison_chain)"), false),
+			FMCPToolParameter(TEXT("pin_value"), TEXT("string"), TEXT("Default value for the pin (for set_pin_default_value)"), false),
+			FMCPToolParameter(TEXT("pin_name"), TEXT("string"), TEXT("Pin name to set value (for set_pin_default_value)"), false)
 		};
 		Info.Annotations = FMCPToolAnnotations::Modifying();
 		return Info;
@@ -128,6 +147,13 @@ private:
 	FMCPToolResult HandleSetStateAnimation(const FString& BlueprintPath, const TSharedRef<FJsonObject>& Params);
 	FMCPToolResult HandleFindAnimations(const FString& BlueprintPath, const TSharedRef<FJsonObject>& Params);
 	FMCPToolResult HandleBatch(const FString& BlueprintPath, const TSharedRef<FJsonObject>& Params);
+
+	// NEW handlers for enhanced operations
+	FMCPToolResult HandleGetTransitionNodes(const FString& BlueprintPath, const TSharedRef<FJsonObject>& Params);
+	FMCPToolResult HandleInspectNodePins(const FString& BlueprintPath, const TSharedRef<FJsonObject>& Params);
+	FMCPToolResult HandleSetPinDefaultValue(const FString& BlueprintPath, const TSharedRef<FJsonObject>& Params);
+	FMCPToolResult HandleAddComparisonChain(const FString& BlueprintPath, const TSharedRef<FJsonObject>& Params);
+	FMCPToolResult HandleValidateBlueprint(const FString& BlueprintPath);
 
 	// Helper to extract position
 	FVector2D ExtractPosition(const TSharedRef<FJsonObject>& Params);
