@@ -41,11 +41,17 @@ FMCPToolResult FMCPTool_GetLevelActors::Execute(const TSharedRef<FJsonObject>& P
 
 	int32 Limit = 100;
 	Params->TryGetNumberField(TEXT("limit"), Limit);
-	if (Limit <= 0) Limit = INT32_MAX;
+	if (Limit <= 0) Limit = 100;
+	if (Limit > 1000) Limit = 1000; // Cap at 1000 for performance
+
+	int32 Offset = 0;
+	Params->TryGetNumberField(TEXT("offset"), Offset);
+	if (Offset < 0) Offset = 0;
 
 	// Collect actors
 	TArray<TSharedPtr<FJsonValue>> ActorsArray;
-	int32 Count = 0;
+	int32 MatchIndex = 0;  // Index among matching actors
+	int32 AddedCount = 0;  // Count of actors added to result
 	int32 TotalMatching = 0;
 
 	for (TActorIterator<AActor> It(World); It; ++It)
@@ -86,10 +92,18 @@ FMCPToolResult FMCPTool_GetLevelActors::Execute(const TSharedRef<FJsonObject>& P
 
 		TotalMatching++;
 
-		// Apply limit
-		if (Count >= Limit)
+		// Apply offset - skip until we reach the offset
+		if (MatchIndex < Offset)
 		{
-			continue; // Keep counting but don't add more
+			MatchIndex++;
+			continue;
+		}
+
+		// Apply limit - stop adding after limit reached
+		if (AddedCount >= Limit)
+		{
+			MatchIndex++;
+			continue; // Keep counting total but don't add more
 		}
 
 		// Build actor info using base class helper
@@ -108,20 +122,28 @@ FMCPToolResult FMCPTool_GetLevelActors::Execute(const TSharedRef<FJsonObject>& P
 		}
 
 		ActorsArray.Add(MakeShared<FJsonValueObject>(ActorJson));
-		Count++;
+		AddedCount++;
+		MatchIndex++;
 	}
 
-	// Build result
+	// Build result with pagination metadata
 	TSharedPtr<FJsonObject> ResultData = MakeShared<FJsonObject>();
 	ResultData->SetArrayField(TEXT("actors"), ActorsArray);
-	ResultData->SetNumberField(TEXT("count"), Count);
-	ResultData->SetNumberField(TEXT("totalMatching"), TotalMatching);
+	ResultData->SetNumberField(TEXT("count"), AddedCount);
+	ResultData->SetNumberField(TEXT("total"), TotalMatching);
+	ResultData->SetNumberField(TEXT("offset"), Offset);
+	ResultData->SetNumberField(TEXT("limit"), Limit);
+	ResultData->SetBoolField(TEXT("hasMore"), (Offset + AddedCount) < TotalMatching);
+	if ((Offset + AddedCount) < TotalMatching)
+	{
+		ResultData->SetNumberField(TEXT("nextOffset"), Offset + AddedCount);
+	}
 	ResultData->SetStringField(TEXT("levelName"), World->GetMapName());
 
-	FString Message = FString::Printf(TEXT("Found %d actors"), Count);
-	if (TotalMatching > Count)
+	FString Message = FString::Printf(TEXT("Found %d actors"), AddedCount);
+	if (TotalMatching > AddedCount)
 	{
-		Message += FString::Printf(TEXT(" (showing %d of %d matching)"), Count, TotalMatching);
+		Message += FString::Printf(TEXT(" (showing %d-%d of %d total)"), Offset + 1, Offset + AddedCount, TotalMatching);
 	}
 
 	return FMCPToolResult::Success(Message, ResultData);

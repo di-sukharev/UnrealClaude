@@ -34,7 +34,18 @@ public:
 	{
 		FMCPToolInfo Info;
 		Info.Name = TEXT("blueprint_modify");
-		Info.Description = TEXT("Modify Blueprints. Level 2: 'create', 'add_variable', 'remove_variable', 'add_function', 'remove_function'. Level 3: 'add_node', 'add_nodes', 'delete_node'. Level 4: 'connect_pins', 'disconnect_pins', 'set_pin_value'. Auto-compiles after changes.");
+		Info.Description = TEXT(
+			"Create and modify Blueprints programmatically. Auto-compiles after changes.\n\n"
+			"Complexity Levels:\n"
+			"Level 2 (Structure): 'create', 'add_variable', 'remove_variable', 'add_function', 'remove_function'\n"
+			"Level 3 (Nodes): 'add_node', 'add_nodes' (batch), 'delete_node'\n"
+			"Level 4 (Wiring): 'connect_pins', 'disconnect_pins', 'set_pin_value'\n\n"
+			"Workflow: Use blueprint_query first to understand existing structure, then modify.\n\n"
+			"Node types: CallFunction, Branch, Event, VariableGet, VariableSet, Sequence, "
+			"PrintString, Add, Subtract, Multiply, Divide\n\n"
+			"Variable types: bool, int32, float, FString, FVector, FRotator, AActor*, UObject*, etc.\n\n"
+			"Returns: Operation result with created node IDs (for subsequent connections)."
+		);
 		Info.Parameters = {
 			// Operation selector
 			FMCPToolParameter(TEXT("operation"), TEXT("string"),
@@ -102,6 +113,7 @@ public:
 			FMCPToolParameter(TEXT("pin_value"), TEXT("string"),
 				TEXT("Default value to set"), false)
 		};
+		Info.Annotations = FMCPToolAnnotations::Modifying();
 		return Info;
 	}
 

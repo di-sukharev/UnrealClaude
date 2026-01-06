@@ -37,9 +37,17 @@ public:
 		FMCPToolInfo Info;
 		Info.Name = TEXT("execute_script");
 		Info.Description = TEXT(
-			"Execute a script with user permission. Supports C++ (via Live Coding), Python, "
-			"Console commands, and Editor Utility. C++ scripts auto-retry on compilation failure. "
-			"IMPORTANT: All scripts MUST include a header comment with @Description for history tracking."
+			"Execute custom scripts in Unreal Engine with user permission.\n\n"
+			"POWERFUL: This tool enables complex operations not possible with other tools. "
+			"Scripts run with full engine access. User approval required before execution.\n\n"
+			"Script types:\n"
+			"- 'cpp': C++ via Live Coding (auto-retries on compile failure)\n"
+			"- 'python': Python script (requires Python plugin)\n"
+			"- 'console': Console command batch\n"
+			"- 'editor_utility': Editor Utility Widget/Blueprint\n\n"
+			"IMPORTANT: Include @Description in script header for history tracking:\n"
+			"/** @UnrealClaude Script\\n * @Description: What this script does */\n\n"
+			"Returns: Script execution result, output, and any errors."
 		);
 		Info.Parameters = {
 			FMCPToolParameter(
@@ -61,6 +69,8 @@ public:
 				false
 			)
 		};
+		Info.Annotations = FMCPToolAnnotations::Modifying();
+		Info.Annotations.bDestructiveHint = true; // Scripts can do anything
 		return Info;
 	}
 

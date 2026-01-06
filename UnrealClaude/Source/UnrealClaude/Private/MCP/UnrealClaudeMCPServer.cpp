@@ -149,6 +149,14 @@ bool FUnrealClaudeMCPServer::HandleListTools(const FHttpServerRequest& Request, 
 			}
 			ToolJson->SetArrayField(TEXT("parameters"), ParamsArray);
 
+			// Add tool annotations (behavioral hints for LLM clients)
+			TSharedPtr<FJsonObject> AnnotationsJson = MakeShared<FJsonObject>();
+			AnnotationsJson->SetBoolField(TEXT("readOnlyHint"), Tool.Annotations.bReadOnlyHint);
+			AnnotationsJson->SetBoolField(TEXT("destructiveHint"), Tool.Annotations.bDestructiveHint);
+			AnnotationsJson->SetBoolField(TEXT("idempotentHint"), Tool.Annotations.bIdempotentHint);
+			AnnotationsJson->SetBoolField(TEXT("openWorldHint"), Tool.Annotations.bOpenWorldHint);
+			ToolJson->SetObjectField(TEXT("annotations"), AnnotationsJson);
+
 			ToolsArray.Add(MakeShared<FJsonValueObject>(ToolJson));
 		}
 	}

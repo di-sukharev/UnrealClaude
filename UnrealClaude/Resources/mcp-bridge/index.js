@@ -152,6 +152,27 @@ function convertToMCPSchema(unrealParams) {
   };
 }
 
+/**
+ * Convert Unreal tool annotations to MCP annotations format
+ */
+function convertAnnotations(unrealAnnotations) {
+  if (!unrealAnnotations) {
+    // Default annotations for tools without explicit annotations
+    return {
+      readOnlyHint: false,
+      destructiveHint: true,
+      idempotentHint: false,
+      openWorldHint: false,
+    };
+  }
+  return {
+    readOnlyHint: unrealAnnotations.readOnlyHint ?? false,
+    destructiveHint: unrealAnnotations.destructiveHint ?? true,
+    idempotentHint: unrealAnnotations.idempotentHint ?? false,
+    openWorldHint: unrealAnnotations.openWorldHint ?? false,
+  };
+}
+
 // Create the MCP server
 const server = new Server(
   {
@@ -194,20 +215,27 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
   const unrealTools = await fetchUnrealTools();
   cachedTools = unrealTools;
 
-  // Convert to MCP format
+  // Convert to MCP format with annotations
   const mcpTools = unrealTools.map((tool) => ({
     name: `unreal_${tool.name}`,
     description: `[Unreal Editor] ${tool.description}`,
     inputSchema: convertToMCPSchema(tool.parameters),
+    annotations: convertAnnotations(tool.annotations),
   }));
 
-  // Add status tool
+  // Add status tool with read-only annotations
   mcpTools.unshift({
     name: "unreal_status",
     description: `Check Unreal Editor connection status. Currently: CONNECTED to ${status.projectName || "Unknown Project"} (${status.engineVersion || "Unknown"})`,
     inputSchema: {
       type: "object",
       properties: {},
+    },
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false,
     },
   });
 
@@ -270,15 +298,29 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   const toolName = name.substring(7); // Remove "unreal_" prefix
   const result = await executeUnrealTool(toolName, args);
 
-  return {
+  // Build response with both text content and structured data
+  const response = {
     content: [
       {
         type: "text",
-        text: JSON.stringify(result, null, 2),
+        text: result.success
+          ? result.message + (result.data ? "\n\n" + JSON.stringify(result.data, null, 2) : "")
+          : `Error: ${result.message}`,
       },
     ],
     isError: !result.success,
   };
+
+  // Add structured content for programmatic access (if data exists)
+  if (result.data) {
+    response.structuredContent = {
+      success: result.success,
+      message: result.message,
+      data: result.data,
+    };
+  }
+
+  return response;
 });
 
 // Start the server

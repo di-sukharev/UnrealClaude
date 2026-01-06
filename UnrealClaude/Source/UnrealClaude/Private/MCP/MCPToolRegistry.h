@@ -6,6 +6,60 @@
 #include "Dom/JsonObject.h"
 
 /**
+ * Tool behavior annotations (hints for LLM clients)
+ * These help clients understand tool behavior without being security guarantees
+ */
+struct FMCPToolAnnotations
+{
+	/** Tool does not modify its environment (read-only operation) */
+	bool bReadOnlyHint = false;
+
+	/** Tool may perform destructive updates (delete, overwrite) */
+	bool bDestructiveHint = true;
+
+	/** Repeated calls with same args have no additional effect */
+	bool bIdempotentHint = false;
+
+	/** Tool interacts with external entities beyond local environment */
+	bool bOpenWorldHint = false;
+
+	FMCPToolAnnotations() = default;
+
+	/** Create read-only tool annotations */
+	static FMCPToolAnnotations ReadOnly()
+	{
+		FMCPToolAnnotations A;
+		A.bReadOnlyHint = true;
+		A.bDestructiveHint = false;
+		A.bIdempotentHint = true;
+		A.bOpenWorldHint = false;
+		return A;
+	}
+
+	/** Create modifying (non-destructive) tool annotations */
+	static FMCPToolAnnotations Modifying()
+	{
+		FMCPToolAnnotations A;
+		A.bReadOnlyHint = false;
+		A.bDestructiveHint = false;
+		A.bIdempotentHint = false;
+		A.bOpenWorldHint = false;
+		return A;
+	}
+
+	/** Create destructive tool annotations */
+	static FMCPToolAnnotations Destructive()
+	{
+		FMCPToolAnnotations A;
+		A.bReadOnlyHint = false;
+		A.bDestructiveHint = true;
+		A.bIdempotentHint = false;
+		A.bOpenWorldHint = false;
+		return A;
+	}
+};
+
+/**
  * Parameter definition for an MCP tool
  */
 struct FMCPToolParameter
@@ -51,6 +105,9 @@ struct FMCPToolInfo
 
 	/** Parameter definitions */
 	TArray<FMCPToolParameter> Parameters;
+
+	/** Behavioral annotations/hints for LLM clients */
+	FMCPToolAnnotations Annotations;
 };
 
 /**

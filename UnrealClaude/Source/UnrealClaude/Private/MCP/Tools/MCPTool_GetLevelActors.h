@@ -15,13 +15,25 @@ public:
 	{
 		FMCPToolInfo Info;
 		Info.Name = TEXT("get_level_actors");
-		Info.Description = TEXT("Get a list of all actors in the current level, optionally filtered by class");
+		Info.Description = TEXT(
+			"Query actors in the current level with optional filtering.\n\n"
+			"Use this tool to discover what's in the scene before making modifications. "
+			"Results include actor name, label, class, and transform (location/rotation/scale).\n\n"
+			"Filter examples:\n"
+			"- class_filter='PointLight' - Find all point lights\n"
+			"- class_filter='StaticMeshActor' - Find all static meshes\n"
+			"- name_filter='Player' - Find actors with 'Player' in name\n\n"
+			"Returns: Array of actors with name, label, class, location, rotation, scale. "
+			"Use offset/limit for pagination on large levels."
+		);
 		Info.Parameters = {
 			FMCPToolParameter(TEXT("class_filter"), TEXT("string"), TEXT("Optional class name to filter actors (e.g., 'StaticMeshActor', 'PointLight')"), false),
 			FMCPToolParameter(TEXT("name_filter"), TEXT("string"), TEXT("Optional substring to filter actors by name"), false),
 			FMCPToolParameter(TEXT("include_hidden"), TEXT("boolean"), TEXT("Include hidden actors in results"), false, TEXT("false")),
-			FMCPToolParameter(TEXT("limit"), TEXT("number"), TEXT("Maximum number of actors to return (0 = no limit)"), false, TEXT("100"))
+			FMCPToolParameter(TEXT("limit"), TEXT("number"), TEXT("Maximum number of actors to return (default: 100)"), false, TEXT("100")),
+			FMCPToolParameter(TEXT("offset"), TEXT("number"), TEXT("Number of actors to skip for pagination"), false, TEXT("0"))
 		};
+		Info.Annotations = FMCPToolAnnotations::ReadOnly();
 		return Info;
 	}
 

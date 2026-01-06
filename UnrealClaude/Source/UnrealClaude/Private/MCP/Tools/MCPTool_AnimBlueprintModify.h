@@ -53,7 +53,25 @@ public:
 	{
 		FMCPToolInfo Info;
 		Info.Name = TEXT("anim_blueprint_modify");
-		Info.Description = TEXT("Modify Animation Blueprints: state machines, states, transitions, conditions, and animation assignments. Supports full transition condition logic with comparisons and boolean operations.");
+		Info.Description = TEXT(
+			"Comprehensive Animation Blueprint modification tool.\n\n"
+			"State Machine Operations:\n"
+			"- 'get_info': Overview of AnimBlueprint structure\n"
+			"- 'get_state_machine': Detailed state machine info\n"
+			"- 'create_state_machine': Create new state machine\n"
+			"- 'add_state', 'remove_state': Manage states\n"
+			"- 'add_transition', 'remove_transition': Manage transitions\n\n"
+			"Transition Configuration:\n"
+			"- 'set_transition_duration': Set blend duration\n"
+			"- 'set_transition_priority': Set evaluation priority\n\n"
+			"Condition Graph (transition logic):\n"
+			"- 'add_condition_node': Add logic node (TimeRemaining, Greater, Less, And, Or, Not, GetVariable)\n"
+			"- 'delete_condition_node', 'connect_condition_nodes', 'connect_to_result'\n\n"
+			"Animation Assignment:\n"
+			"- 'set_state_animation': Assign AnimSequence, BlendSpace, BlendSpace1D, or Montage\n"
+			"- 'find_animations': Search compatible animation assets\n\n"
+			"- 'batch': Execute multiple operations atomically"
+		);
 		Info.Parameters = {
 			FMCPToolParameter(TEXT("blueprint_path"), TEXT("string"), TEXT("Path to the Animation Blueprint (e.g., '/Game/Characters/ABP_Character')"), true),
 			FMCPToolParameter(TEXT("operation"), TEXT("string"), TEXT("Operation: get_info, get_state_machine, create_state_machine, add_state, remove_state, add_transition, remove_transition, set_transition_duration, set_transition_priority, add_condition_node, delete_condition_node, connect_condition_nodes, connect_to_result, set_state_animation, find_animations, batch"), true),
@@ -79,6 +97,7 @@ public:
 			FMCPToolParameter(TEXT("asset_type"), TEXT("string"), TEXT("Asset type filter: AnimSequence, BlendSpace, BlendSpace1D, Montage, All"), false, TEXT("All")),
 			FMCPToolParameter(TEXT("operations"), TEXT("array"), TEXT("Array of operations for batch mode"), false)
 		};
+		Info.Annotations = FMCPToolAnnotations::Modifying();
 		return Info;
 	}
 
