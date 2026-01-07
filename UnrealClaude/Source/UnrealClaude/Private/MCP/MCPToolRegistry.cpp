@@ -1,6 +1,7 @@
-// Copyright Your Name. All Rights Reserved.
+// Copyright Natali Caggiano. All Rights Reserved.
 
 #include "MCPToolRegistry.h"
+#include "MCPTaskQueue.h"
 #include "UnrealClaudeModule.h"
 #include "UnrealClaudeConstants.h"
 
@@ -19,6 +20,16 @@
 #include "Tools/MCPTool_BlueprintQuery.h"
 #include "Tools/MCPTool_BlueprintModify.h"
 #include "Tools/MCPTool_AnimBlueprintModify.h"
+#include "Tools/MCPTool_AssetSearch.h"
+#include "Tools/MCPTool_AssetDependencies.h"
+#include "Tools/MCPTool_AssetReferencers.h"
+
+// Task queue tools
+#include "Tools/MCPTool_TaskSubmit.h"
+#include "Tools/MCPTool_TaskStatus.h"
+#include "Tools/MCPTool_TaskResult.h"
+#include "Tools/MCPTool_TaskList.h"
+#include "Tools/MCPTool_TaskCancel.h"
 
 FMCPToolRegistry::FMCPToolRegistry()
 {
@@ -27,7 +38,24 @@ FMCPToolRegistry::FMCPToolRegistry()
 
 FMCPToolRegistry::~FMCPToolRegistry()
 {
+	StopTaskQueue();
 	Tools.Empty();
+}
+
+void FMCPToolRegistry::StartTaskQueue()
+{
+	if (TaskQueue.IsValid())
+	{
+		TaskQueue->Start();
+	}
+}
+
+void FMCPToolRegistry::StopTaskQueue()
+{
+	if (TaskQueue.IsValid())
+	{
+		TaskQueue->Stop();
+	}
 }
 
 void FMCPToolRegistry::RegisterBuiltinTools()
@@ -55,6 +83,20 @@ void FMCPToolRegistry::RegisterBuiltinTools()
 	RegisterTool(MakeShared<FMCPTool_BlueprintQuery>());
 	RegisterTool(MakeShared<FMCPTool_BlueprintModify>());
 	RegisterTool(MakeShared<FMCPTool_AnimBlueprintModify>());
+
+	// Asset tools
+	RegisterTool(MakeShared<FMCPTool_AssetSearch>());
+	RegisterTool(MakeShared<FMCPTool_AssetDependencies>());
+	RegisterTool(MakeShared<FMCPTool_AssetReferencers>());
+
+	// Create and register async task queue tools
+	// Task queue takes a raw pointer since the registry always outlives it
+	TaskQueue = MakeShared<FMCPTaskQueue>(this);
+	RegisterTool(MakeShared<FMCPTool_TaskSubmit>(TaskQueue));
+	RegisterTool(MakeShared<FMCPTool_TaskStatus>(TaskQueue));
+	RegisterTool(MakeShared<FMCPTool_TaskResult>(TaskQueue));
+	RegisterTool(MakeShared<FMCPTool_TaskList>(TaskQueue));
+	RegisterTool(MakeShared<FMCPTool_TaskCancel>(TaskQueue));
 
 	UE_LOG(LogUnrealClaude, Log, TEXT("Registered %d MCP tools"), Tools.Num());
 }

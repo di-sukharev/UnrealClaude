@@ -1,4 +1,4 @@
-// Copyright Your Name. All Rights Reserved.
+// Copyright Natali Caggiano. All Rights Reserved.
 
 #include "MCPTool_SetProperty.h"
 #include "MCP/MCPParamValidator.h"

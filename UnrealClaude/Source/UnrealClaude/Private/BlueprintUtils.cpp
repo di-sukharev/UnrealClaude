@@ -1,4 +1,4 @@
-// Copyright Your Name. All Rights Reserved.
+// Copyright Natali Caggiano. All Rights Reserved.
 
 /**
  * REFACTORED: BlueprintUtils - Introspection Functions Only

@@ -1,9 +1,12 @@
-// Copyright Your Name. All Rights Reserved.
+// Copyright Natali Caggiano. All Rights Reserved.
 
 #pragma once
 
 #include "CoreMinimal.h"
 #include "Dom/JsonObject.h"
+
+// Forward declarations
+class FMCPTaskQueue;
 
 /**
  * Tool behavior annotations (hints for LLM clients)
@@ -56,6 +59,13 @@ struct FMCPToolAnnotations
 		A.bIdempotentHint = false;
 		A.bOpenWorldHint = false;
 		return A;
+	}
+
+	/** Create destructive tool annotations with message (for documentation) */
+	static FMCPToolAnnotations Destructive(const FString& /*WarningMessage*/)
+	{
+		// Message is for documentation purposes only
+		return Destructive();
 	}
 };
 
@@ -192,6 +202,15 @@ public:
 		return Found && Found->IsValid() ? Found->Get() : nullptr;
 	}
 
+	/** Get the async task queue */
+	TSharedPtr<FMCPTaskQueue> GetTaskQueue() const { return TaskQueue; }
+
+	/** Start the async task queue (call after construction) */
+	void StartTaskQueue();
+
+	/** Stop the async task queue (call before destruction) */
+	void StopTaskQueue();
+
 private:
 	/** Register all built-in tools */
 	void RegisterBuiltinTools();
@@ -207,4 +226,7 @@ private:
 
 	/** Whether the cached tool list is valid */
 	mutable bool bCacheValid = false;
+
+	/** Async task queue for long-running operations */
+	TSharedPtr<FMCPTaskQueue> TaskQueue;
 };

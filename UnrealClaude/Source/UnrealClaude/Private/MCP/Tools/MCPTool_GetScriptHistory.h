@@ -1,15 +1,15 @@
-// Copyright Your Name. All Rights Reserved.
+// Copyright Natali Caggiano. All Rights Reserved.
 
 #pragma once
 
 #include "CoreMinimal.h"
-#include "../MCPToolRegistry.h"
+#include "../MCPToolBase.h"
 
 /**
  * MCP Tool for getting script execution history
  * Returns recent script executions with descriptions (not full code)
  */
-class FMCPTool_GetScriptHistory : public IMCPTool
+class FMCPTool_GetScriptHistory : public FMCPToolBase
 {
 public:
 	virtual FMCPToolInfo GetInfo() const override

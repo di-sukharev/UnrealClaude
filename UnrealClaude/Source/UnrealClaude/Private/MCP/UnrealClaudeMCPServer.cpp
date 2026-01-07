@@ -1,4 +1,4 @@
-// Copyright Your Name. All Rights Reserved.
+// Copyright Natali Caggiano. All Rights Reserved.
 
 #include "UnrealClaudeMCPServer.h"
 #include "MCPToolRegistry.h"
@@ -52,6 +52,13 @@ bool FUnrealClaudeMCPServer::Start(uint32 Port)
 	HttpServerModule.StartAllListeners();
 
 	bIsRunning = true;
+
+	// Start the async task queue
+	if (ToolRegistry.IsValid())
+	{
+		ToolRegistry->StartTaskQueue();
+	}
+
 	UE_LOG(LogUnrealClaude, Log, TEXT("MCP Server started on http://localhost:%d"), ServerPort);
 	UE_LOG(LogUnrealClaude, Log, TEXT("  GET  /mcp/tools      - List available tools"));
 	UE_LOG(LogUnrealClaude, Log, TEXT("  POST /mcp/tool/{name} - Execute a tool"));
@@ -65,6 +72,12 @@ void FUnrealClaudeMCPServer::Stop()
 	if (!bIsRunning)
 	{
 		return;
+	}
+
+	// Stop the async task queue first
+	if (ToolRegistry.IsValid())
+	{
+		ToolRegistry->StopTaskQueue();
 	}
 
 	// Unbind routes

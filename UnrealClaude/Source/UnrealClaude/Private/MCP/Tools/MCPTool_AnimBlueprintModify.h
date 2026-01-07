@@ -1,4 +1,4 @@
-// Copyright Your Name. All Rights Reserved.
+// Copyright Natali Caggiano. All Rights Reserved.
 
 #pragma once
 
@@ -157,4 +157,16 @@ private:
 
 	// Helper to extract position
 	FVector2D ExtractPosition(const TSharedRef<FJsonObject>& Params);
+
+	/**
+	 * Load animation blueprint or return error result.
+	 * Reduces code duplication across 23+ handler methods.
+	 *
+	 * @param Path Blueprint path to load
+	 * @param OutBP Output parameter for loaded blueprint
+	 * @return Empty optional on success, error result on failure
+	 */
+	TOptional<FMCPToolResult> LoadAnimBlueprintOrError(
+		const FString& Path,
+		UAnimBlueprint*& OutBP);
 };

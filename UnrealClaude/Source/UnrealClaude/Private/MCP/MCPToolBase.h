@@ -1,4 +1,4 @@
-// Copyright Your Name. All Rights Reserved.
+// Copyright Natali Caggiano. All Rights Reserved.
 
 #pragma once
 
@@ -311,6 +311,82 @@ protected:
 			OutError = FMCPToolResult::Error(ValidationError);
 			return false;
 		}
+		return true;
+	}
+
+	/**
+	 * Extract a required string and validate it in one call
+	 * Combines ExtractRequiredString + validation for common patterns
+	 *
+	 * @param Params - The JSON parameters
+	 * @param ParamName - The parameter name to extract
+	 * @param ValidatorFunc - Validation function (e.g., FMCPParamValidator::ValidateActorName)
+	 * @param OutValue - Output value
+	 * @param OutError - Error result if extraction/validation fails
+	 * @return true if extraction AND validation succeeded
+	 *
+	 * Example usage:
+	 *   FString BlueprintPath;
+	 *   if (!ExtractAndValidate(Params, TEXT("blueprint_path"),
+	 *       FMCPParamValidator::ValidateBlueprintPath, BlueprintPath, Error))
+	 *   {
+	 *       return Error.GetValue();
+	 *   }
+	 */
+	template<typename ValidatorT>
+	bool ExtractAndValidate(
+		const TSharedRef<FJsonObject>& Params,
+		const FString& ParamName,
+		ValidatorT ValidatorFunc,
+		FString& OutValue,
+		TOptional<FMCPToolResult>& OutError) const
+	{
+		// Step 1: Extract
+		if (!ExtractRequiredString(Params, ParamName, OutValue, OutError))
+		{
+			return false;
+		}
+
+		// Step 2: Validate
+		return ValidateParam(OutValue, ValidatorFunc, OutError);
+	}
+
+	/**
+	 * Extract an optional string and validate it if present
+	 * Returns true even if parameter is missing (uses default)
+	 * Returns false only if parameter exists but fails validation
+	 *
+	 * @param Params - The JSON parameters
+	 * @param ParamName - The parameter name to extract
+	 * @param ValidatorFunc - Validation function
+	 * @param DefaultValue - Default value if parameter missing
+	 * @param OutValue - Output value (set to default or extracted)
+	 * @param OutError - Error result if validation fails
+	 * @return true if parameter missing or valid, false if present but invalid
+	 */
+	template<typename ValidatorT>
+	bool ExtractOptionalAndValidate(
+		const TSharedRef<FJsonObject>& Params,
+		const FString& ParamName,
+		ValidatorT ValidatorFunc,
+		const FString& DefaultValue,
+		FString& OutValue,
+		TOptional<FMCPToolResult>& OutError) const
+	{
+		FString ExtractedValue;
+		if (!Params->TryGetStringField(ParamName, ExtractedValue) || ExtractedValue.IsEmpty())
+		{
+			OutValue = DefaultValue;
+			return true;  // Missing is OK for optional
+		}
+
+		// Present - must validate
+		if (!ValidateParam(ExtractedValue, ValidatorFunc, OutError))
+		{
+			return false;
+		}
+
+		OutValue = ExtractedValue;
 		return true;
 	}
 

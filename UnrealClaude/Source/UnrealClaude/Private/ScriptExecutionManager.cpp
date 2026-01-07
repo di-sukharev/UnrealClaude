@@ -1,4 +1,4 @@
-// Copyright Your Name. All Rights Reserved.
+// Copyright Natali Caggiano. All Rights Reserved.
 
 #include "ScriptExecutionManager.h"
 #include "ScriptPermissionDialog.h"

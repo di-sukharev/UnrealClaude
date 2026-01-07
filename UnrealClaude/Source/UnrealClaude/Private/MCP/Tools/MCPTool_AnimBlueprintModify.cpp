@@ -1,4 +1,4 @@
-// Copyright Your Name. All Rights Reserved.
+// Copyright Natali Caggiano. All Rights Reserved.
 
 #include "MCPTool_AnimBlueprintModify.h"
 #include "AnimationBlueprintUtils.h"
@@ -137,13 +137,25 @@ FVector2D FMCPTool_AnimBlueprintModify::ExtractPosition(const TSharedRef<FJsonOb
 	return Position;
 }
 
-FMCPToolResult FMCPTool_AnimBlueprintModify::HandleGetInfo(const FString& BlueprintPath)
+TOptional<FMCPToolResult> FMCPTool_AnimBlueprintModify::LoadAnimBlueprintOrError(
+	const FString& Path,
+	UAnimBlueprint*& OutBP)
 {
 	FString Error;
-	UAnimBlueprint* AnimBP = FAnimationBlueprintUtils::LoadAnimBlueprint(BlueprintPath, Error);
-	if (!AnimBP)
+	OutBP = FAnimationBlueprintUtils::LoadAnimBlueprint(Path, Error);
+	if (!OutBP)
 	{
 		return FMCPToolResult::Error(Error);
+	}
+	return TOptional<FMCPToolResult>();
+}
+
+FMCPToolResult FMCPTool_AnimBlueprintModify::HandleGetInfo(const FString& BlueprintPath)
+{
+	UAnimBlueprint* AnimBP = nullptr;
+	if (auto ErrorResult = LoadAnimBlueprintOrError(BlueprintPath, AnimBP))
+	{
+		return ErrorResult.GetValue();
 	}
 
 	TSharedPtr<FJsonObject> Result = FAnimationBlueprintUtils::SerializeAnimBlueprintInfo(AnimBP);
@@ -152,11 +164,10 @@ FMCPToolResult FMCPTool_AnimBlueprintModify::HandleGetInfo(const FString& Bluepr
 
 FMCPToolResult FMCPTool_AnimBlueprintModify::HandleGetStateMachine(const FString& BlueprintPath, const TSharedRef<FJsonObject>& Params)
 {
-	FString Error;
-	UAnimBlueprint* AnimBP = FAnimationBlueprintUtils::LoadAnimBlueprint(BlueprintPath, Error);
-	if (!AnimBP)
+	UAnimBlueprint* AnimBP = nullptr;
+	if (auto ErrorResult = LoadAnimBlueprintOrError(BlueprintPath, AnimBP))
 	{
-		return FMCPToolResult::Error(Error);
+		return ErrorResult.GetValue();
 	}
 
 	FString StateMachineName = ExtractOptionalString(Params, TEXT("state_machine"));
@@ -176,11 +187,10 @@ FMCPToolResult FMCPTool_AnimBlueprintModify::HandleGetStateMachine(const FString
 
 FMCPToolResult FMCPTool_AnimBlueprintModify::HandleCreateStateMachine(const FString& BlueprintPath, const TSharedRef<FJsonObject>& Params)
 {
-	FString Error;
-	UAnimBlueprint* AnimBP = FAnimationBlueprintUtils::LoadAnimBlueprint(BlueprintPath, Error);
-	if (!AnimBP)
+	UAnimBlueprint* AnimBP = nullptr;
+	if (auto ErrorResult = LoadAnimBlueprintOrError(BlueprintPath, AnimBP))
 	{
-		return FMCPToolResult::Error(Error);
+		return ErrorResult.GetValue();
 	}
 
 	FString MachineName = ExtractOptionalString(Params, TEXT("state_machine"));
@@ -190,7 +200,7 @@ FMCPToolResult FMCPTool_AnimBlueprintModify::HandleCreateStateMachine(const FStr
 	}
 
 	FVector2D Position = ExtractPosition(Params);
-	FString NodeId;
+	FString NodeId, Error;
 
 	UAnimGraphNode_StateMachine* SM = FAnimationBlueprintUtils::CreateStateMachine(
 		AnimBP, MachineName, Position, NodeId, Error);
@@ -214,11 +224,10 @@ FMCPToolResult FMCPTool_AnimBlueprintModify::HandleCreateStateMachine(const FStr
 
 FMCPToolResult FMCPTool_AnimBlueprintModify::HandleAddState(const FString& BlueprintPath, const TSharedRef<FJsonObject>& Params)
 {
-	FString Error;
-	UAnimBlueprint* AnimBP = FAnimationBlueprintUtils::LoadAnimBlueprint(BlueprintPath, Error);
-	if (!AnimBP)
+	UAnimBlueprint* AnimBP = nullptr;
+	if (auto ErrorResult = LoadAnimBlueprintOrError(BlueprintPath, AnimBP))
 	{
-		return FMCPToolResult::Error(Error);
+		return ErrorResult.GetValue();
 	}
 
 	FString StateMachineName = ExtractOptionalString(Params, TEXT("state_machine"));
@@ -235,7 +244,7 @@ FMCPToolResult FMCPTool_AnimBlueprintModify::HandleAddState(const FString& Bluep
 
 	FVector2D Position = ExtractPosition(Params);
 	bool bIsEntry = ExtractOptionalBool(Params, TEXT("is_entry_state"), false);
-	FString NodeId;
+	FString NodeId, Error;
 
 	UAnimStateNode* State = FAnimationBlueprintUtils::AddState(
 		AnimBP, StateMachineName, StateName, Position, bIsEntry, NodeId, Error);
@@ -259,11 +268,10 @@ FMCPToolResult FMCPTool_AnimBlueprintModify::HandleAddState(const FString& Bluep
 
 FMCPToolResult FMCPTool_AnimBlueprintModify::HandleRemoveState(const FString& BlueprintPath, const TSharedRef<FJsonObject>& Params)
 {
-	FString Error;
-	UAnimBlueprint* AnimBP = FAnimationBlueprintUtils::LoadAnimBlueprint(BlueprintPath, Error);
-	if (!AnimBP)
+	UAnimBlueprint* AnimBP = nullptr;
+	if (auto ErrorResult = LoadAnimBlueprintOrError(BlueprintPath, AnimBP))
 	{
-		return FMCPToolResult::Error(Error);
+		return ErrorResult.GetValue();
 	}
 
 	FString StateMachineName = ExtractOptionalString(Params, TEXT("state_machine"));
@@ -274,6 +282,7 @@ FMCPToolResult FMCPTool_AnimBlueprintModify::HandleRemoveState(const FString& Bl
 		return FMCPToolResult::Error(TEXT("state_machine and state_name parameters required"));
 	}
 
+	FString Error;
 	if (!FAnimationBlueprintUtils::RemoveState(AnimBP, StateMachineName, StateName, Error))
 	{
 		return FMCPToolResult::Error(Error);
@@ -290,11 +299,10 @@ FMCPToolResult FMCPTool_AnimBlueprintModify::HandleRemoveState(const FString& Bl
 
 FMCPToolResult FMCPTool_AnimBlueprintModify::HandleSetEntryState(const FString& BlueprintPath, const TSharedRef<FJsonObject>& Params)
 {
-	FString Error;
-	UAnimBlueprint* AnimBP = FAnimationBlueprintUtils::LoadAnimBlueprint(BlueprintPath, Error);
-	if (!AnimBP)
+	UAnimBlueprint* AnimBP = nullptr;
+	if (auto ErrorResult = LoadAnimBlueprintOrError(BlueprintPath, AnimBP))
 	{
-		return FMCPToolResult::Error(Error);
+		return ErrorResult.GetValue();
 	}
 
 	FString StateMachineName = ExtractOptionalString(Params, TEXT("state_machine"));
@@ -309,6 +317,7 @@ FMCPToolResult FMCPTool_AnimBlueprintModify::HandleSetEntryState(const FString& 
 		return FMCPToolResult::Error(TEXT("state_name parameter required"));
 	}
 
+	FString Error;
 	if (!FAnimationBlueprintUtils::SetEntryState(AnimBP, StateMachineName, StateName, Error))
 	{
 		return FMCPToolResult::Error(Error);
@@ -327,11 +336,10 @@ FMCPToolResult FMCPTool_AnimBlueprintModify::HandleSetEntryState(const FString& 
 
 FMCPToolResult FMCPTool_AnimBlueprintModify::HandleAddTransition(const FString& BlueprintPath, const TSharedRef<FJsonObject>& Params)
 {
-	FString Error;
-	UAnimBlueprint* AnimBP = FAnimationBlueprintUtils::LoadAnimBlueprint(BlueprintPath, Error);
-	if (!AnimBP)
+	UAnimBlueprint* AnimBP = nullptr;
+	if (auto ErrorResult = LoadAnimBlueprintOrError(BlueprintPath, AnimBP))
 	{
-		return FMCPToolResult::Error(Error);
+		return ErrorResult.GetValue();
 	}
 
 	FString StateMachineName = ExtractOptionalString(Params, TEXT("state_machine"));
@@ -343,7 +351,7 @@ FMCPToolResult FMCPTool_AnimBlueprintModify::HandleAddTransition(const FString& 
 		return FMCPToolResult::Error(TEXT("state_machine, from_state, and to_state parameters required"));
 	}
 
-	FString NodeId;
+	FString NodeId, Error;
 	UAnimStateTransitionNode* Transition = FAnimationBlueprintUtils::CreateTransition(
 		AnimBP, StateMachineName, FromState, ToState, NodeId, Error);
 
@@ -366,11 +374,10 @@ FMCPToolResult FMCPTool_AnimBlueprintModify::HandleAddTransition(const FString& 
 
 FMCPToolResult FMCPTool_AnimBlueprintModify::HandleRemoveTransition(const FString& BlueprintPath, const TSharedRef<FJsonObject>& Params)
 {
-	FString Error;
-	UAnimBlueprint* AnimBP = FAnimationBlueprintUtils::LoadAnimBlueprint(BlueprintPath, Error);
-	if (!AnimBP)
+	UAnimBlueprint* AnimBP = nullptr;
+	if (auto ErrorResult = LoadAnimBlueprintOrError(BlueprintPath, AnimBP))
 	{
-		return FMCPToolResult::Error(Error);
+		return ErrorResult.GetValue();
 	}
 
 	FString StateMachineName = ExtractOptionalString(Params, TEXT("state_machine"));
@@ -382,6 +389,7 @@ FMCPToolResult FMCPTool_AnimBlueprintModify::HandleRemoveTransition(const FStrin
 		return FMCPToolResult::Error(TEXT("state_machine, from_state, and to_state parameters required"));
 	}
 
+	FString Error;
 	if (!FAnimationBlueprintUtils::RemoveTransition(AnimBP, StateMachineName, FromState, ToState, Error))
 	{
 		return FMCPToolResult::Error(Error);
@@ -398,11 +406,10 @@ FMCPToolResult FMCPTool_AnimBlueprintModify::HandleRemoveTransition(const FStrin
 
 FMCPToolResult FMCPTool_AnimBlueprintModify::HandleSetTransitionDuration(const FString& BlueprintPath, const TSharedRef<FJsonObject>& Params)
 {
-	FString Error;
-	UAnimBlueprint* AnimBP = FAnimationBlueprintUtils::LoadAnimBlueprint(BlueprintPath, Error);
-	if (!AnimBP)
+	UAnimBlueprint* AnimBP = nullptr;
+	if (auto ErrorResult = LoadAnimBlueprintOrError(BlueprintPath, AnimBP))
 	{
-		return FMCPToolResult::Error(Error);
+		return ErrorResult.GetValue();
 	}
 
 	FString StateMachineName = ExtractOptionalString(Params, TEXT("state_machine"));
@@ -415,6 +422,7 @@ FMCPToolResult FMCPTool_AnimBlueprintModify::HandleSetTransitionDuration(const F
 		return FMCPToolResult::Error(TEXT("state_machine, from_state, and to_state parameters required"));
 	}
 
+	FString Error;
 	if (!FAnimationBlueprintUtils::SetTransitionDuration(AnimBP, StateMachineName, FromState, ToState, Duration, Error))
 	{
 		return FMCPToolResult::Error(Error);
@@ -432,11 +440,10 @@ FMCPToolResult FMCPTool_AnimBlueprintModify::HandleSetTransitionDuration(const F
 
 FMCPToolResult FMCPTool_AnimBlueprintModify::HandleSetTransitionPriority(const FString& BlueprintPath, const TSharedRef<FJsonObject>& Params)
 {
-	FString Error;
-	UAnimBlueprint* AnimBP = FAnimationBlueprintUtils::LoadAnimBlueprint(BlueprintPath, Error);
-	if (!AnimBP)
+	UAnimBlueprint* AnimBP = nullptr;
+	if (auto ErrorResult = LoadAnimBlueprintOrError(BlueprintPath, AnimBP))
 	{
-		return FMCPToolResult::Error(Error);
+		return ErrorResult.GetValue();
 	}
 
 	FString StateMachineName = ExtractOptionalString(Params, TEXT("state_machine"));
@@ -449,6 +456,7 @@ FMCPToolResult FMCPTool_AnimBlueprintModify::HandleSetTransitionPriority(const F
 		return FMCPToolResult::Error(TEXT("state_machine, from_state, and to_state parameters required"));
 	}
 
+	FString Error;
 	if (!FAnimationBlueprintUtils::SetTransitionPriority(AnimBP, StateMachineName, FromState, ToState, Priority, Error))
 	{
 		return FMCPToolResult::Error(Error);
@@ -466,11 +474,10 @@ FMCPToolResult FMCPTool_AnimBlueprintModify::HandleSetTransitionPriority(const F
 
 FMCPToolResult FMCPTool_AnimBlueprintModify::HandleAddConditionNode(const FString& BlueprintPath, const TSharedRef<FJsonObject>& Params)
 {
-	FString Error;
-	UAnimBlueprint* AnimBP = FAnimationBlueprintUtils::LoadAnimBlueprint(BlueprintPath, Error);
-	if (!AnimBP)
+	UAnimBlueprint* AnimBP = nullptr;
+	if (auto ErrorResult = LoadAnimBlueprintOrError(BlueprintPath, AnimBP))
 	{
-		return FMCPToolResult::Error(Error);
+		return ErrorResult.GetValue();
 	}
 
 	FString StateMachineName = ExtractOptionalString(Params, TEXT("state_machine"));
@@ -492,7 +499,7 @@ FMCPToolResult FMCPTool_AnimBlueprintModify::HandleAddConditionNode(const FStrin
 	}
 
 	FVector2D Position = ExtractPosition(Params);
-	FString NodeId;
+	FString NodeId, Error;
 
 	UEdGraphNode* Node = FAnimationBlueprintUtils::AddConditionNode(
 		AnimBP, StateMachineName, FromState, ToState,
@@ -516,11 +523,10 @@ FMCPToolResult FMCPTool_AnimBlueprintModify::HandleAddConditionNode(const FStrin
 
 FMCPToolResult FMCPTool_AnimBlueprintModify::HandleDeleteConditionNode(const FString& BlueprintPath, const TSharedRef<FJsonObject>& Params)
 {
-	FString Error;
-	UAnimBlueprint* AnimBP = FAnimationBlueprintUtils::LoadAnimBlueprint(BlueprintPath, Error);
-	if (!AnimBP)
+	UAnimBlueprint* AnimBP = nullptr;
+	if (auto ErrorResult = LoadAnimBlueprintOrError(BlueprintPath, AnimBP))
 	{
-		return FMCPToolResult::Error(Error);
+		return ErrorResult.GetValue();
 	}
 
 	FString StateMachineName = ExtractOptionalString(Params, TEXT("state_machine"));
@@ -533,6 +539,7 @@ FMCPToolResult FMCPTool_AnimBlueprintModify::HandleDeleteConditionNode(const FSt
 		return FMCPToolResult::Error(TEXT("state_machine, from_state, to_state, and node_id parameters required"));
 	}
 
+	FString Error;
 	if (!FAnimationBlueprintUtils::DeleteConditionNode(
 		AnimBP, StateMachineName, FromState, ToState, NodeId, Error))
 	{
@@ -551,11 +558,10 @@ FMCPToolResult FMCPTool_AnimBlueprintModify::HandleDeleteConditionNode(const FSt
 
 FMCPToolResult FMCPTool_AnimBlueprintModify::HandleConnectConditionNodes(const FString& BlueprintPath, const TSharedRef<FJsonObject>& Params)
 {
-	FString Error;
-	UAnimBlueprint* AnimBP = FAnimationBlueprintUtils::LoadAnimBlueprint(BlueprintPath, Error);
-	if (!AnimBP)
+	UAnimBlueprint* AnimBP = nullptr;
+	if (auto ErrorResult = LoadAnimBlueprintOrError(BlueprintPath, AnimBP))
 	{
-		return FMCPToolResult::Error(Error);
+		return ErrorResult.GetValue();
 	}
 
 	FString StateMachineName = ExtractOptionalString(Params, TEXT("state_machine"));
@@ -572,6 +578,7 @@ FMCPToolResult FMCPTool_AnimBlueprintModify::HandleConnectConditionNodes(const F
 		return FMCPToolResult::Error(TEXT("state_machine, from_state, to_state, source_node_id, and target_node_id required"));
 	}
 
+	FString Error;
 	if (!FAnimationBlueprintUtils::ConnectConditionNodes(
 		AnimBP, StateMachineName, FromState, ToState,
 		SourceNodeId, SourcePin, TargetNodeId, TargetPin, Error))
@@ -590,11 +597,10 @@ FMCPToolResult FMCPTool_AnimBlueprintModify::HandleConnectConditionNodes(const F
 
 FMCPToolResult FMCPTool_AnimBlueprintModify::HandleConnectToResult(const FString& BlueprintPath, const TSharedRef<FJsonObject>& Params)
 {
-	FString Error;
-	UAnimBlueprint* AnimBP = FAnimationBlueprintUtils::LoadAnimBlueprint(BlueprintPath, Error);
-	if (!AnimBP)
+	UAnimBlueprint* AnimBP = nullptr;
+	if (auto ErrorResult = LoadAnimBlueprintOrError(BlueprintPath, AnimBP))
 	{
-		return FMCPToolResult::Error(Error);
+		return ErrorResult.GetValue();
 	}
 
 	FString StateMachineName = ExtractOptionalString(Params, TEXT("state_machine"));
@@ -608,6 +614,7 @@ FMCPToolResult FMCPTool_AnimBlueprintModify::HandleConnectToResult(const FString
 		return FMCPToolResult::Error(TEXT("state_machine, from_state, to_state, and source_node_id required"));
 	}
 
+	FString Error;
 	if (!FAnimationBlueprintUtils::ConnectToTransitionResult(
 		AnimBP, StateMachineName, FromState, ToState,
 		ConditionNodeId, ConditionPin, Error))
@@ -626,11 +633,10 @@ FMCPToolResult FMCPTool_AnimBlueprintModify::HandleConnectToResult(const FString
 
 FMCPToolResult FMCPTool_AnimBlueprintModify::HandleConnectStateMachineToOutput(const FString& BlueprintPath, const TSharedRef<FJsonObject>& Params)
 {
-	FString Error;
-	UAnimBlueprint* AnimBP = FAnimationBlueprintUtils::LoadAnimBlueprint(BlueprintPath, Error);
-	if (!AnimBP)
+	UAnimBlueprint* AnimBP = nullptr;
+	if (auto ErrorResult = LoadAnimBlueprintOrError(BlueprintPath, AnimBP))
 	{
-		return FMCPToolResult::Error(Error);
+		return ErrorResult.GetValue();
 	}
 
 	FString StateMachineName = ExtractOptionalString(Params, TEXT("state_machine"));
@@ -639,6 +645,7 @@ FMCPToolResult FMCPTool_AnimBlueprintModify::HandleConnectStateMachineToOutput(c
 		return FMCPToolResult::Error(TEXT("state_machine parameter required"));
 	}
 
+	FString Error;
 	if (!FAnimGraphEditor::ConnectStateMachineToAnimGraphRoot(AnimBP, StateMachineName, Error))
 	{
 		return FMCPToolResult::Error(Error);
@@ -656,11 +663,10 @@ FMCPToolResult FMCPTool_AnimBlueprintModify::HandleConnectStateMachineToOutput(c
 
 FMCPToolResult FMCPTool_AnimBlueprintModify::HandleSetStateAnimation(const FString& BlueprintPath, const TSharedRef<FJsonObject>& Params)
 {
-	FString Error;
-	UAnimBlueprint* AnimBP = FAnimationBlueprintUtils::LoadAnimBlueprint(BlueprintPath, Error);
-	if (!AnimBP)
+	UAnimBlueprint* AnimBP = nullptr;
+	if (auto ErrorResult = LoadAnimBlueprintOrError(BlueprintPath, AnimBP))
 	{
-		return FMCPToolResult::Error(Error);
+		return ErrorResult.GetValue();
 	}
 
 	FString StateMachineName = ExtractOptionalString(Params, TEXT("state_machine"));
@@ -673,6 +679,7 @@ FMCPToolResult FMCPTool_AnimBlueprintModify::HandleSetStateAnimation(const FStri
 		return FMCPToolResult::Error(TEXT("state_machine, state_name, and animation_path required"));
 	}
 
+	FString Error;
 	bool bSuccess = false;
 
 	if (AnimType == TEXT("sequence"))
@@ -773,11 +780,10 @@ FMCPToolResult FMCPTool_AnimBlueprintModify::HandleFindAnimations(const FString&
 
 FMCPToolResult FMCPTool_AnimBlueprintModify::HandleBatch(const FString& BlueprintPath, const TSharedRef<FJsonObject>& Params)
 {
-	FString Error;
-	UAnimBlueprint* AnimBP = FAnimationBlueprintUtils::LoadAnimBlueprint(BlueprintPath, Error);
-	if (!AnimBP)
+	UAnimBlueprint* AnimBP = nullptr;
+	if (auto ErrorResult = LoadAnimBlueprintOrError(BlueprintPath, AnimBP))
 	{
-		return FMCPToolResult::Error(Error);
+		return ErrorResult.GetValue();
 	}
 
 	const TArray<TSharedPtr<FJsonValue>>* Operations;
@@ -786,6 +792,7 @@ FMCPToolResult FMCPTool_AnimBlueprintModify::HandleBatch(const FString& Blueprin
 		return FMCPToolResult::Error(TEXT("operations array required for batch mode"));
 	}
 
+	FString Error;
 	TSharedPtr<FJsonObject> Result = FAnimationBlueprintUtils::ExecuteBatchOperations(
 		AnimBP, *Operations, Error);
 
@@ -802,11 +809,10 @@ FMCPToolResult FMCPTool_AnimBlueprintModify::HandleBatch(const FString& Blueprin
 
 FMCPToolResult FMCPTool_AnimBlueprintModify::HandleGetTransitionNodes(const FString& BlueprintPath, const TSharedRef<FJsonObject>& Params)
 {
-	FString Error;
-	UAnimBlueprint* AnimBP = FAnimationBlueprintUtils::LoadAnimBlueprint(BlueprintPath, Error);
-	if (!AnimBP)
+	UAnimBlueprint* AnimBP = nullptr;
+	if (auto ErrorResult = LoadAnimBlueprintOrError(BlueprintPath, AnimBP))
 	{
-		return FMCPToolResult::Error(Error);
+		return ErrorResult.GetValue();
 	}
 
 	FString StateMachineName = ExtractOptionalString(Params, TEXT("state_machine"));
@@ -818,6 +824,7 @@ FMCPToolResult FMCPTool_AnimBlueprintModify::HandleGetTransitionNodes(const FStr
 		return FMCPToolResult::Error(TEXT("state_machine parameter required"));
 	}
 
+	FString Error;
 	TSharedPtr<FJsonObject> Result = FAnimationBlueprintUtils::GetTransitionNodes(
 		AnimBP, StateMachineName, FromState, ToState, Error);
 
@@ -831,11 +838,10 @@ FMCPToolResult FMCPTool_AnimBlueprintModify::HandleGetTransitionNodes(const FStr
 
 FMCPToolResult FMCPTool_AnimBlueprintModify::HandleInspectNodePins(const FString& BlueprintPath, const TSharedRef<FJsonObject>& Params)
 {
-	FString Error;
-	UAnimBlueprint* AnimBP = FAnimationBlueprintUtils::LoadAnimBlueprint(BlueprintPath, Error);
-	if (!AnimBP)
+	UAnimBlueprint* AnimBP = nullptr;
+	if (auto ErrorResult = LoadAnimBlueprintOrError(BlueprintPath, AnimBP))
 	{
-		return FMCPToolResult::Error(Error);
+		return ErrorResult.GetValue();
 	}
 
 	FString StateMachineName = ExtractOptionalString(Params, TEXT("state_machine"));
@@ -848,6 +854,7 @@ FMCPToolResult FMCPTool_AnimBlueprintModify::HandleInspectNodePins(const FString
 		return FMCPToolResult::Error(TEXT("state_machine, from_state, to_state, and node_id parameters required"));
 	}
 
+	FString Error;
 	TSharedPtr<FJsonObject> Result = FAnimationBlueprintUtils::InspectNodePins(
 		AnimBP, StateMachineName, FromState, ToState, NodeId, Error);
 
@@ -861,11 +868,10 @@ FMCPToolResult FMCPTool_AnimBlueprintModify::HandleInspectNodePins(const FString
 
 FMCPToolResult FMCPTool_AnimBlueprintModify::HandleSetPinDefaultValue(const FString& BlueprintPath, const TSharedRef<FJsonObject>& Params)
 {
-	FString Error;
-	UAnimBlueprint* AnimBP = FAnimationBlueprintUtils::LoadAnimBlueprint(BlueprintPath, Error);
-	if (!AnimBP)
+	UAnimBlueprint* AnimBP = nullptr;
+	if (auto ErrorResult = LoadAnimBlueprintOrError(BlueprintPath, AnimBP))
 	{
-		return FMCPToolResult::Error(Error);
+		return ErrorResult.GetValue();
 	}
 
 	FString StateMachineName = ExtractOptionalString(Params, TEXT("state_machine"));
@@ -881,6 +887,7 @@ FMCPToolResult FMCPTool_AnimBlueprintModify::HandleSetPinDefaultValue(const FStr
 		return FMCPToolResult::Error(TEXT("state_machine, from_state, to_state, node_id, and pin_name parameters required"));
 	}
 
+	FString Error;
 	if (!FAnimationBlueprintUtils::SetPinDefaultValue(
 		AnimBP, StateMachineName, FromState, ToState, NodeId, PinName, PinValue, Error))
 	{
@@ -901,11 +908,10 @@ FMCPToolResult FMCPTool_AnimBlueprintModify::HandleSetPinDefaultValue(const FStr
 
 FMCPToolResult FMCPTool_AnimBlueprintModify::HandleAddComparisonChain(const FString& BlueprintPath, const TSharedRef<FJsonObject>& Params)
 {
-	FString Error;
-	UAnimBlueprint* AnimBP = FAnimationBlueprintUtils::LoadAnimBlueprint(BlueprintPath, Error);
-	if (!AnimBP)
+	UAnimBlueprint* AnimBP = nullptr;
+	if (auto ErrorResult = LoadAnimBlueprintOrError(BlueprintPath, AnimBP))
 	{
-		return FMCPToolResult::Error(Error);
+		return ErrorResult.GetValue();
 	}
 
 	FString StateMachineName = ExtractOptionalString(Params, TEXT("state_machine"));
@@ -921,6 +927,7 @@ FMCPToolResult FMCPTool_AnimBlueprintModify::HandleAddComparisonChain(const FStr
 		return FMCPToolResult::Error(TEXT("state_machine, from_state, to_state, and variable_name parameters required"));
 	}
 
+	FString Error;
 	TSharedPtr<FJsonObject> Result = FAnimationBlueprintUtils::AddComparisonChain(
 		AnimBP, StateMachineName, FromState, ToState,
 		VariableName, ComparisonType, CompareValue, Position, Error);
@@ -937,13 +944,13 @@ FMCPToolResult FMCPTool_AnimBlueprintModify::HandleAddComparisonChain(const FStr
 
 FMCPToolResult FMCPTool_AnimBlueprintModify::HandleValidateBlueprint(const FString& BlueprintPath)
 {
-	FString Error;
-	UAnimBlueprint* AnimBP = FAnimationBlueprintUtils::LoadAnimBlueprint(BlueprintPath, Error);
-	if (!AnimBP)
+	UAnimBlueprint* AnimBP = nullptr;
+	if (auto ErrorResult = LoadAnimBlueprintOrError(BlueprintPath, AnimBP))
 	{
-		return FMCPToolResult::Error(Error);
+		return ErrorResult.GetValue();
 	}
 
+	FString Error;
 	TSharedPtr<FJsonObject> Result = FAnimationBlueprintUtils::ValidateBlueprint(AnimBP, Error);
 
 	if (!Result->GetBoolField(TEXT("success")))

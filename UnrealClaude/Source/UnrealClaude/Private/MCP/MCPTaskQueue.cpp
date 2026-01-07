@@ -1,0 +1,382 @@
+// Copyright Natali Caggiano. All Rights Reserved.
+
+#include "MCPTaskQueue.h"
+#include "MCPToolRegistry.h"
+#include "UnrealClaudeModule.h"
+#include "Async/Async.h"
+
+FMCPTaskQueue::FMCPTaskQueue(FMCPToolRegistry* InToolRegistry)
+	: ToolRegistry(InToolRegistry)
+	, RunningTaskCount(0)
+	, WorkerThread(nullptr)
+	, bShouldStop(false)
+	, WakeUpEvent(nullptr)
+	, LastCleanupTime(FDateTime::UtcNow())
+{
+	WakeUpEvent = FPlatformProcess::GetSynchEventFromPool();
+}
+
+FMCPTaskQueue::~FMCPTaskQueue()
+{
+	Stop();
+	if (WakeUpEvent)
+	{
+		FPlatformProcess::ReturnSynchEventToPool(WakeUpEvent);
+		WakeUpEvent = nullptr;
+	}
+}
+
+void FMCPTaskQueue::Start()
+{
+	if (WorkerThread)
+	{
+		return; // Already running
+	}
+
+	bShouldStop = false;
+	WorkerThread = FRunnableThread::Create(this, TEXT("MCPTaskQueue"), 0, TPri_BelowNormal);
+	UE_LOG(LogUnrealClaude, Log, TEXT("MCP Task Queue started"));
+}
+
+void FMCPTaskQueue::Stop()
+{
+	if (!WorkerThread)
+	{
+		return;
+	}
+
+	bShouldStop = true;
+	WakeUpEvent->Trigger();
+
+	WorkerThread->WaitForCompletion();
+	delete WorkerThread;
+	WorkerThread = nullptr;
+
+	UE_LOG(LogUnrealClaude, Log, TEXT("MCP Task Queue stopped"));
+}
+
+FGuid FMCPTaskQueue::SubmitTask(const FString& ToolName, TSharedPtr<FJsonObject> Parameters, uint32 TimeoutMs)
+{
+	// Validate tool exists
+	if (ToolRegistry && !ToolRegistry->HasTool(ToolName))
+	{
+		UE_LOG(LogUnrealClaude, Warning, TEXT("Cannot submit task: Tool '%s' not found"), *ToolName);
+		return FGuid();
+	}
+
+	// Create new task
+	TSharedPtr<FMCPAsyncTask> Task = MakeShared<FMCPAsyncTask>();
+	Task->ToolName = ToolName;
+	Task->Parameters = Parameters;
+	Task->TimeoutMs = TimeoutMs > 0 ? TimeoutMs : Config.DefaultTimeoutMs;
+
+	// Add to task map and queue
+	{
+		FScopeLock Lock(&TasksLock);
+
+		// Check if we're at capacity
+		int32 ActiveTasks = 0;
+		for (const auto& Pair : Tasks)
+		{
+			if (!Pair.Value->IsComplete())
+			{
+				ActiveTasks++;
+			}
+		}
+
+		if (ActiveTasks >= Config.MaxHistorySize)
+		{
+			UE_LOG(LogUnrealClaude, Warning, TEXT("Task queue at capacity (%d tasks), rejecting new task"), Config.MaxHistorySize);
+			return FGuid();
+		}
+
+		Tasks.Add(Task->TaskId, Task);
+		PendingQueue.Enqueue(Task->TaskId);
+	}
+
+	UE_LOG(LogUnrealClaude, Log, TEXT("Task submitted: %s (tool: %s)"), *Task->TaskId.ToString(), *ToolName);
+
+	// Wake up worker thread
+	WakeUpEvent->Trigger();
+
+	return Task->TaskId;
+}
+
+TSharedPtr<FMCPAsyncTask> FMCPTaskQueue::GetTask(const FGuid& TaskId) const
+{
+	FScopeLock Lock(&TasksLock);
+	const TSharedPtr<FMCPAsyncTask>* Found = Tasks.Find(TaskId);
+	return Found ? *Found : nullptr;
+}
+
+bool FMCPTaskQueue::GetTaskResult(const FGuid& TaskId, FMCPToolResult& OutResult) const
+{
+	TSharedPtr<FMCPAsyncTask> Task = GetTask(TaskId);
+	if (!Task.IsValid() || !Task->IsComplete())
+	{
+		return false;
+	}
+
+	OutResult = Task->Result;
+	return true;
+}
+
+bool FMCPTaskQueue::CancelTask(const FGuid& TaskId)
+{
+	TSharedPtr<FMCPAsyncTask> Task = GetTask(TaskId);
+	if (!Task.IsValid())
+	{
+		return false;
+	}
+
+	EMCPTaskStatus CurrentStatus = Task->Status.Load();
+	if (CurrentStatus == EMCPTaskStatus::Pending)
+	{
+		// Can immediately cancel pending tasks
+		Task->Status.Store(EMCPTaskStatus::Cancelled);
+		Task->CompletedTime = FDateTime::UtcNow();
+		Task->Result = FMCPToolResult::Error(TEXT("Task cancelled before execution"));
+		UE_LOG(LogUnrealClaude, Log, TEXT("Task cancelled (pending): %s"), *TaskId.ToString());
+		return true;
+	}
+	else if (CurrentStatus == EMCPTaskStatus::Running)
+	{
+		// Request cancellation for running tasks
+		Task->bCancellationRequested = true;
+		UE_LOG(LogUnrealClaude, Log, TEXT("Task cancellation requested (running): %s"), *TaskId.ToString());
+		return true;
+	}
+
+	return false; // Already complete
+}
+
+TArray<TSharedPtr<FMCPAsyncTask>> FMCPTaskQueue::GetAllTasks(bool bIncludeCompleted) const
+{
+	TArray<TSharedPtr<FMCPAsyncTask>> Result;
+
+	FScopeLock Lock(&TasksLock);
+	for (const auto& Pair : Tasks)
+	{
+		if (bIncludeCompleted || !Pair.Value->IsComplete())
+		{
+			Result.Add(Pair.Value);
+		}
+	}
+
+	// Sort by submitted time (newest first)
+	Result.Sort([](const TSharedPtr<FMCPAsyncTask>& A, const TSharedPtr<FMCPAsyncTask>& B)
+	{
+		return A->SubmittedTime > B->SubmittedTime;
+	});
+
+	return Result;
+}
+
+void FMCPTaskQueue::GetStats(int32& OutPending, int32& OutRunning, int32& OutCompleted) const
+{
+	OutPending = 0;
+	OutRunning = 0;
+	OutCompleted = 0;
+
+	FScopeLock Lock(&TasksLock);
+	for (const auto& Pair : Tasks)
+	{
+		switch (Pair.Value->Status.Load())
+		{
+		case EMCPTaskStatus::Pending:
+			OutPending++;
+			break;
+		case EMCPTaskStatus::Running:
+			OutRunning++;
+			break;
+		default:
+			OutCompleted++;
+			break;
+		}
+	}
+}
+
+bool FMCPTaskQueue::Init()
+{
+	return true;
+}
+
+uint32 FMCPTaskQueue::Run()
+{
+	while (!bShouldStop)
+	{
+		// Check for pending tasks
+		FGuid TaskId;
+		bool bHasTask = false;
+
+		{
+			FScopeLock Lock(&TasksLock);
+			if (RunningTaskCount.Load() < Config.MaxConcurrentTasks)
+			{
+				// Find next non-cancelled pending task
+				while (PendingQueue.Dequeue(TaskId))
+				{
+					TSharedPtr<FMCPAsyncTask>* Found = Tasks.Find(TaskId);
+					if (Found && (*Found)->Status.Load() == EMCPTaskStatus::Pending)
+					{
+						bHasTask = true;
+						break;
+					}
+				}
+			}
+		}
+
+		if (bHasTask)
+		{
+			TSharedPtr<FMCPAsyncTask> Task = GetTask(TaskId);
+			if (Task.IsValid())
+			{
+				RunningTaskCount++;
+
+				// Execute task asynchronously
+				AsyncTask(ENamedThreads::AnyBackgroundThreadNormalTask, [this, Task]()
+				{
+					ExecuteTask(Task);
+					RunningTaskCount--;
+					WakeUpEvent->Trigger(); // Wake up to process more tasks
+				});
+			}
+		}
+
+		// Periodic cleanup
+		FDateTime Now = FDateTime::UtcNow();
+		if ((Now - LastCleanupTime).GetTotalSeconds() >= Config.CleanupIntervalSeconds)
+		{
+			CleanupOldTasks();
+			CheckTimeouts();
+			LastCleanupTime = Now;
+		}
+
+		// Wait for new tasks or timeout
+		WakeUpEvent->Wait(1000); // Wake every second to check timeouts
+	}
+
+	return 0;
+}
+
+void FMCPTaskQueue::Exit()
+{
+	// Cancel all running tasks
+	FScopeLock Lock(&TasksLock);
+	for (auto& Pair : Tasks)
+	{
+		if (!Pair.Value->IsComplete())
+		{
+			Pair.Value->bCancellationRequested = true;
+		}
+	}
+}
+
+void FMCPTaskQueue::ExecuteTask(TSharedPtr<FMCPAsyncTask> Task)
+{
+	if (!Task.IsValid() || !ToolRegistry)
+	{
+		return;
+	}
+
+	// Mark as running
+	Task->Status.Store(EMCPTaskStatus::Running);
+	Task->StartedTime = FDateTime::UtcNow();
+
+	UE_LOG(LogUnrealClaude, Log, TEXT("Task started: %s (tool: %s)"), *Task->TaskId.ToString(), *Task->ToolName);
+
+	// Check for early cancellation
+	if (Task->bCancellationRequested)
+	{
+		Task->Status.Store(EMCPTaskStatus::Cancelled);
+		Task->CompletedTime = FDateTime::UtcNow();
+		Task->Result = FMCPToolResult::Error(TEXT("Task cancelled"));
+		return;
+	}
+
+	// Prepare parameters
+	TSharedRef<FJsonObject> Params = Task->Parameters.IsValid()
+		? Task->Parameters.ToSharedRef()
+		: MakeShared<FJsonObject>();
+
+	// Execute the tool via registry.
+	// THREAD SAFETY NOTE: ExecuteTool() handles game thread dispatch internally.
+	// If called from a background thread (as we are here), it dispatches to the
+	// game thread via AsyncTask and waits with a timeout. This ensures all UObject
+	// operations happen on the game thread while allowing async task submission.
+	// See MCPToolRegistry::ExecuteTool() for implementation details.
+	FMCPToolResult Result = ToolRegistry->ExecuteTool(Task->ToolName, Params);
+
+	// Check for cancellation after execution
+	if (Task->bCancellationRequested)
+	{
+		Task->Status.Store(EMCPTaskStatus::Cancelled);
+		Task->Result = FMCPToolResult::Error(TEXT("Task cancelled during execution"));
+	}
+	else
+	{
+		Task->Status.Store(Result.bSuccess ? EMCPTaskStatus::Completed : EMCPTaskStatus::Failed);
+		Task->Result = Result;
+	}
+
+	Task->CompletedTime = FDateTime::UtcNow();
+	Task->Progress.Store(100);
+
+	FTimespan Duration = Task->CompletedTime - Task->StartedTime;
+	UE_LOG(LogUnrealClaude, Log, TEXT("Task completed: %s (status: %s, duration: %.2fs)"),
+		*Task->TaskId.ToString(),
+		*FMCPAsyncTask::StatusToString(Task->Status.Load()),
+		Duration.GetTotalSeconds());
+}
+
+void FMCPTaskQueue::CleanupOldTasks()
+{
+	FDateTime CutoffTime = FDateTime::UtcNow() - FTimespan::FromSeconds(Config.ResultRetentionSeconds);
+
+	TArray<FGuid> TasksToRemove;
+
+	{
+		FScopeLock Lock(&TasksLock);
+		for (const auto& Pair : Tasks)
+		{
+			if (Pair.Value->IsComplete() && Pair.Value->CompletedTime < CutoffTime)
+			{
+				TasksToRemove.Add(Pair.Key);
+			}
+		}
+
+		for (const FGuid& Id : TasksToRemove)
+		{
+			Tasks.Remove(Id);
+		}
+	}
+
+	if (TasksToRemove.Num() > 0)
+	{
+		UE_LOG(LogUnrealClaude, Log, TEXT("Cleaned up %d old tasks"), TasksToRemove.Num());
+	}
+}
+
+void FMCPTaskQueue::CheckTimeouts()
+{
+	FDateTime Now = FDateTime::UtcNow();
+
+	FScopeLock Lock(&TasksLock);
+	for (auto& Pair : Tasks)
+	{
+		TSharedPtr<FMCPAsyncTask>& Task = Pair.Value;
+		if (Task->Status.Load() == EMCPTaskStatus::Running)
+		{
+			FTimespan Elapsed = Now - Task->StartedTime;
+			if (Elapsed.GetTotalMilliseconds() > Task->TimeoutMs)
+			{
+				Task->bCancellationRequested = true;
+				Task->Status.Store(EMCPTaskStatus::TimedOut);
+				Task->CompletedTime = Now;
+				Task->Result = FMCPToolResult::Error(
+					FString::Printf(TEXT("Task timed out after %d ms"), Task->TimeoutMs));
+				UE_LOG(LogUnrealClaude, Warning, TEXT("Task timed out: %s"), *Task->TaskId.ToString());
+			}
+		}
+	}
+}

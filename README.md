@@ -14,9 +14,12 @@ UnrealClaude integrates the [Claude Code CLI](https://docs.anthropic.com/en/docs
 - **Native Editor Integration** - Chat panel docked in your editor
 - **UE5.7 Context** - System prompts optimized for Unreal Engine 5.7 development
 - **MCP Server** - Model Context Protocol server for external tool integration
+- **Blueprint Editing** - Create and modify Blueprints, Animation Blueprints, state machines
+- **Asset Management** - Search assets, query dependencies and referencers
+- **Async Task Queue** - Long-running operations won't timeout
 - **Script Execution** - Claude can write, compile (via Live Coding), and execute scripts with your permission
 - **Session Persistence** - Conversation history saved across editor sessions
-- **Project-Aware** - Automatically gathers project context (modules, plugins, assets) and is able to see editor viewports 
+- **Project-Aware** - Automatically gathers project context (modules, plugins, assets) and is able to see editor viewports
 - **Uses Claude Code Auth** - No separate API key management needed
 
 ## Prerequisites
@@ -193,6 +196,50 @@ The `anim_blueprint_modify` tool supports state machine editing:
 - `delete` - Delete animation nodes from state graphs
 
 All modifications auto-compile the Animation Blueprint after changes.
+
+#### Asset Tools
+
+| Tool | Description |
+|------|-------------|
+| `asset_search` | Search for assets by class, path, or name with pagination |
+| `asset_dependencies` | Get all assets that an asset depends on |
+| `asset_referencers` | Get all assets that reference a specific asset |
+
+The `asset_search` tool supports:
+- **Class filtering**: Find all Blueprints, Materials, Textures, etc.
+- **Path filtering**: Search within specific content folders
+- **Name patterns**: Match assets by substring
+- **Pagination**: Handle large result sets with limit/offset
+
+#### Async Task Queue
+
+For long-running operations that might timeout, use the async task system:
+
+| Tool | Description |
+|------|-------------|
+| `task_submit` | Submit any tool for async background execution |
+| `task_status` | Poll task status (pending/running/completed/failed) |
+| `task_result` | Get full result of a completed task |
+| `task_list` | List all tasks with queue statistics |
+| `task_cancel` | Cancel a pending or running task |
+
+**Async Workflow Example:**
+```
+1. task_submit(tool_name="asset_search", params={class_filter:"Blueprint"}, timeout_ms=300000)
+   → Returns: {task_id: "abc123...", status: "pending"}
+
+2. task_status(task_id="abc123...")
+   → Returns: {status: "running", progress: 50}
+
+3. task_result(task_id="abc123...")
+   → Returns: {success: true, data: {...}}
+```
+
+Task queue features:
+- **Configurable timeout**: Default 2 minutes, customizable per-task
+- **Concurrent execution**: Up to 4 tasks run in parallel
+- **Automatic cleanup**: Old results cleared after 5 minutes
+- **Cancellation support**: Cancel pending or running tasks
 
 #### Utility Tools
 

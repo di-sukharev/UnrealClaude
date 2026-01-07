@@ -1,9 +1,9 @@
-// Copyright Your Name. All Rights Reserved.
+// Copyright Natali Caggiano. All Rights Reserved.
 
 #pragma once
 
 #include "CoreMinimal.h"
-#include "../MCPToolRegistry.h"
+#include "../MCPToolBase.h"
 
 /**
  * MCP Tool for executing scripts with user permission
@@ -29,7 +29,7 @@
  * @Created: 2026-01-03T10:30:00Z
  * """
  */
-class FMCPTool_ExecuteScript : public IMCPTool
+class FMCPTool_ExecuteScript : public FMCPToolBase
 {
 public:
 	virtual FMCPToolInfo GetInfo() const override

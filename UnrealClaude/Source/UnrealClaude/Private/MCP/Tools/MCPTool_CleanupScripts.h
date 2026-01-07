@@ -1,15 +1,15 @@
-// Copyright Your Name. All Rights Reserved.
+// Copyright Natali Caggiano. All Rights Reserved.
 
 #pragma once
 
 #include "CoreMinimal.h"
-#include "../MCPToolRegistry.h"
+#include "../MCPToolBase.h"
 
 /**
  * MCP Tool for cleaning up generated scripts and history
  * Use before pushing to production to remove all Claude-generated scripts
  */
-class FMCPTool_CleanupScripts : public IMCPTool
+class FMCPTool_CleanupScripts : public FMCPToolBase
 {
 public:
 	virtual FMCPToolInfo GetInfo() const override
