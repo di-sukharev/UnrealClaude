@@ -133,20 +133,33 @@ namespace UnrealClaudeConstants
 
 		/** Expected MCP tools that should be registered at startup */
 		inline const TArray<FString> ExpectedTools = {
+			// Actor tools
 			TEXT("spawn_actor"),
 			TEXT("get_level_actors"),
 			TEXT("delete_actors"),
 			TEXT("move_actor"),
 			TEXT("set_property"),
+			// Utility tools
 			TEXT("run_console_command"),
 			TEXT("get_output_log"),
 			TEXT("capture_viewport"),
 			TEXT("execute_script"),
 			TEXT("cleanup_scripts"),
 			TEXT("get_script_history"),
+			// Blueprint tools
 			TEXT("blueprint_query"),
 			TEXT("blueprint_modify"),
-			TEXT("anim_blueprint_modify")
+			TEXT("anim_blueprint_modify"),
+			// Asset tools
+			TEXT("asset_search"),
+			TEXT("asset_dependencies"),
+			TEXT("asset_referencers"),
+			// Task queue tools
+			TEXT("task_submit"),
+			TEXT("task_status"),
+			TEXT("task_result"),
+			TEXT("task_list"),
+			TEXT("task_cancel")
 		};
 	}
 }

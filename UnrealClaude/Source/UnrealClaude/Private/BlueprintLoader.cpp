@@ -6,8 +6,12 @@
 #include "Engine/BlueprintGeneratedClass.h"
 #include "Kismet2/KismetEditorUtilities.h"
 #include "Kismet2/BlueprintEditorUtils.h"
+#include "Kismet2/CompilerResultsLog.h"
 #include "AssetToolsModule.h"
 #include "Factories/BlueprintFactory.h"
+#include "Logging/MessageLog.h"
+#include "Misc/UObjectToken.h"
+#include "EdGraph/EdGraphNode.h"
 
 UBlueprint* FBlueprintLoader::LoadBlueprint(const FString& BlueprintPath, FString& OutError)
 {
@@ -81,26 +85,158 @@ bool FBlueprintLoader::IsBlueprintEditable(UBlueprint* Blueprint, FString& OutEr
 
 bool FBlueprintLoader::CompileBlueprint(UBlueprint* Blueprint, FString& OutError)
 {
-	if (!Blueprint)
+	// Use the detailed version and extract simple result
+	FBlueprintCompileResult Result = CompileBlueprintWithResult(Blueprint);
+	if (!Result.bSuccess)
 	{
-		OutError = TEXT("Blueprint is null");
+		// Return the verbose output for backward compatibility
+		OutError = Result.VerboseOutput.IsEmpty() ?
+			TEXT("Blueprint compilation failed") : Result.VerboseOutput;
 		return false;
 	}
+	return true;
+}
+
+FBlueprintCompileResult FBlueprintLoader::CompileBlueprintWithResult(UBlueprint* Blueprint)
+{
+	FBlueprintCompileResult Result;
+
+	if (!Blueprint)
+	{
+		Result.StatusString = TEXT("Error");
+		Result.VerboseOutput = TEXT("Blueprint is null");
+		FBlueprintCompileMessage Msg;
+		Msg.Severity = TEXT("Error");
+		Msg.Message = TEXT("Blueprint is null");
+		Result.Messages.Add(Msg);
+		Result.ErrorCount = 1;
+		return Result;
+	}
+
+	// Clear the message log before compile to capture fresh messages
+	const FName BlueprintLogName = TEXT("BlueprintLog");
+	FMessageLog BlueprintLog(BlueprintLogName);
 
 	// Mark as modified before compilation
 	FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
 
-	// Compile
+	// Compile the Blueprint
 	FKismetEditorUtilities::CompileBlueprint(Blueprint);
 
-	// Check for errors
-	if (Blueprint->Status == BS_Error)
+	// Build verbose output from compiler status
+	TStringBuilder<1024> VerboseBuilder;
+	VerboseBuilder.Appendf(TEXT("Compiling Blueprint: %s\n"), *Blueprint->GetName());
+
+	// Determine status
+	switch (Blueprint->Status)
 	{
-		OutError = TEXT("Blueprint compilation failed");
-		return false;
+	case BS_Error:
+		Result.StatusString = TEXT("Error");
+		Result.bSuccess = false;
+		VerboseBuilder.Append(TEXT("Status: FAILED (Errors)\n"));
+		break;
+	case BS_UpToDate:
+		Result.StatusString = TEXT("UpToDate");
+		Result.bSuccess = true;
+		VerboseBuilder.Append(TEXT("Status: SUCCESS (Up to Date)\n"));
+		break;
+	case BS_UpToDateWithWarnings:
+		Result.StatusString = TEXT("UpToDateWithWarnings");
+		Result.bSuccess = true;
+		VerboseBuilder.Append(TEXT("Status: SUCCESS (With Warnings)\n"));
+		break;
+	case BS_Dirty:
+		Result.StatusString = TEXT("Dirty");
+		Result.bSuccess = false;
+		VerboseBuilder.Append(TEXT("Status: FAILED (Still Dirty)\n"));
+		break;
+	default:
+		Result.StatusString = TEXT("Unknown");
+		Result.bSuccess = (Blueprint->Status != BS_Error);
+		VerboseBuilder.Append(TEXT("Status: Unknown\n"));
+		break;
 	}
 
-	return true;
+	// Extract error messages from the Blueprint's graphs
+	// UE stores compile errors on the nodes themselves
+	VerboseBuilder.Append(TEXT("\n--- Compiler Messages ---\n"));
+
+	auto ProcessGraph = [&](UEdGraph* Graph)
+	{
+		if (!Graph) return;
+
+		for (UEdGraphNode* Node : Graph->Nodes)
+		{
+			if (!Node) continue;
+
+			// Check for errors on this node
+			if (Node->bHasCompilerMessage)
+			{
+				FBlueprintCompileMessage Msg;
+				Msg.NodeName = Node->GetNodeTitle(ENodeTitleType::ListView).ToString();
+				Msg.ObjectPath = Node->GetPathName();
+
+				if (Node->ErrorType == EMessageSeverity::Error)
+				{
+					Msg.Severity = TEXT("Error");
+					Result.ErrorCount++;
+				}
+				else if (Node->ErrorType == EMessageSeverity::Warning)
+				{
+					Msg.Severity = TEXT("Warning");
+					Result.WarningCount++;
+				}
+				else
+				{
+					Msg.Severity = TEXT("Info");
+				}
+
+				Msg.Message = Node->ErrorMsg;
+				Result.Messages.Add(Msg);
+
+				VerboseBuilder.Appendf(TEXT("[%s] Node '%s': %s\n"),
+					*Msg.Severity, *Msg.NodeName, *Msg.Message);
+			}
+		}
+	};
+
+	// Process all graphs for errors
+	for (UEdGraph* Graph : Blueprint->UbergraphPages)
+	{
+		ProcessGraph(Graph);
+	}
+	for (UEdGraph* Graph : Blueprint->FunctionGraphs)
+	{
+		ProcessGraph(Graph);
+	}
+	for (UEdGraph* Graph : Blueprint->MacroGraphs)
+	{
+		ProcessGraph(Graph);
+	}
+
+	// If no messages but status is error, add a generic message
+	if (Blueprint->Status == BS_Error && Result.Messages.Num() == 0)
+	{
+		FBlueprintCompileMessage Msg;
+		Msg.Severity = TEXT("Error");
+		Msg.Message = TEXT("Blueprint compilation failed (no specific error captured)");
+		Result.Messages.Add(Msg);
+		Result.ErrorCount = 1;
+		VerboseBuilder.Append(TEXT("[Error] Blueprint compilation failed (no specific error captured)\n"));
+	}
+
+	// Summary
+	VerboseBuilder.Appendf(TEXT("\n--- Summary ---\n"));
+	VerboseBuilder.Appendf(TEXT("Errors: %d\n"), Result.ErrorCount);
+	VerboseBuilder.Appendf(TEXT("Warnings: %d\n"), Result.WarningCount);
+	VerboseBuilder.Appendf(TEXT("Result: %s\n"), Result.bSuccess ? TEXT("Success") : TEXT("Failed"));
+
+	Result.VerboseOutput = VerboseBuilder.ToString();
+
+	UE_LOG(LogUnrealClaude, Log, TEXT("Blueprint '%s' compiled: %s (Errors: %d, Warnings: %d)"),
+		*Blueprint->GetName(), *Result.StatusString, Result.ErrorCount, Result.WarningCount);
+
+	return Result;
 }
 
 void FBlueprintLoader::MarkBlueprintDirty(UBlueprint* Blueprint)

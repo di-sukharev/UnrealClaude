@@ -62,6 +62,12 @@ public:
 		return FBlueprintLoader::CompileBlueprint(Blueprint, OutError);
 	}
 
+	/** Compile with detailed result including error messages */
+	FORCEINLINE static FBlueprintCompileResult CompileBlueprintWithResult(UBlueprint* Blueprint)
+	{
+		return FBlueprintLoader::CompileBlueprintWithResult(Blueprint);
+	}
+
 	FORCEINLINE static void MarkBlueprintDirty(UBlueprint* Blueprint)
 	{
 		FBlueprintLoader::MarkBlueprintDirty(Blueprint);

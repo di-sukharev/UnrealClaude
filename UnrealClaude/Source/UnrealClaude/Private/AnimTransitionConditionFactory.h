@@ -10,6 +10,18 @@ class UEdGraph;
 class UEdGraphNode;
 
 /**
+ * Type of comparison pin for creating type-appropriate comparison nodes
+ */
+enum class EComparisonPinType : uint8
+{
+	Float,		// Double/float comparison
+	Integer,	// Integer comparison
+	Boolean,	// Boolean comparison
+	Byte,		// Byte comparison
+	Enum		// Enum comparison (uses byte comparison)
+};
+
+/**
  * AnimTransitionConditionFactory - Factory for creating transition condition nodes
  *
  * Responsibilities:
@@ -115,14 +127,15 @@ private:
 		FString& OutError
 	);
 
-	/** Create comparison node (float or bool) */
+	/** Create comparison node with type-appropriate function */
 	static UEdGraphNode* CreateComparisonNode(
 		UEdGraph* Graph,
 		const FString& ComparisonType,
 		const TSharedPtr<FJsonObject>& Params,
 		FVector2D Position,
 		FString& OutError,
-		bool bIsBooleanType = false
+		bool bIsBooleanType = false,
+		EComparisonPinType PinType = EComparisonPinType::Float
 	);
 
 	/** Create logic node (And, Or, Not) */

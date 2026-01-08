@@ -251,17 +251,48 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   if (name === "unreal_status") {
     const status = await checkUnrealConnection();
     if (status.connected) {
+      // Get tools and categorize them
+      const unrealTools = await fetchUnrealTools();
+      const categories = {};
+      const brokenTools = [];
+
+      for (const tool of unrealTools) {
+        // Categorize by tool name prefix
+        let category = "utility";
+        if (tool.name.startsWith("blueprint_")) category = "blueprint";
+        else if (tool.name.startsWith("anim_blueprint")) category = "animation";
+        else if (tool.name.startsWith("asset_")) category = "asset";
+        else if (tool.name.startsWith("task_")) category = "task_queue";
+        else if (tool.name.includes("actor") || tool.name.includes("spawn") || tool.name.includes("move") || tool.name.includes("level")) category = "actor";
+
+        categories[category] = (categories[category] || 0) + 1;
+
+        // Check for tool issues (missing required fields)
+        if (!tool.description || tool.description.length < 5) {
+          brokenTools.push({ name: tool.name, issue: "missing description" });
+        }
+      }
+
+      // Build response - only include broken tools if there are any
+      const response = {
+        connected: true,
+        project: status.projectName,
+        engine: status.engineVersion,
+        tool_summary: categories,
+        total_tools: unrealTools.length,
+        message: "Unreal Editor connected. All tools operational.",
+      };
+
+      if (brokenTools.length > 0) {
+        response.broken_tools = brokenTools;
+        response.message = `Unreal Editor connected. ${brokenTools.length} tool(s) have issues.`;
+      }
+
       return {
         content: [
           {
             type: "text",
-            text: JSON.stringify({
-              connected: true,
-              project: status.projectName,
-              engine: status.engineVersion,
-              tools: status.toolCount,
-              message: "Unreal Editor is connected and ready for commands.",
-            }, null, 2),
+            text: JSON.stringify(response, null, 2),
           },
         ],
       };

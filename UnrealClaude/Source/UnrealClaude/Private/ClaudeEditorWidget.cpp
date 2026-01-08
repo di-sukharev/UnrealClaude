@@ -603,7 +603,7 @@ FString SClaudeEditorWidget::GenerateMCPStatusMessage() const
 	// Get expected tools from constants
 	const TArray<FString>& ExpectedTools = UnrealClaudeConstants::MCPServer::ExpectedTools;
 
-	// Check each expected tool
+	// Check each expected tool - only track missing ones
 	int32 AvailableCount = 0;
 	TArray<FString> MissingTools;
 
@@ -611,22 +611,28 @@ FString SClaudeEditorWidget::GenerateMCPStatusMessage() const
 	{
 		if (RegisteredToolNames.Contains(ToolName))
 		{
-			StatusMessage += FString::Printf(TEXT("  ✓ %s\n"), *ToolName);
 			AvailableCount++;
 		}
 		else
 		{
-			StatusMessage += FString::Printf(TEXT("  ✗ %s\n"), *ToolName);
 			MissingTools.Add(ToolName);
 		}
 	}
 
-	// Summary
-	StatusMessage += FString::Printf(TEXT("\nTools: %d/%d available\n"), AvailableCount, ExpectedTools.Num());
-
-	if (MissingTools.Num() > 0)
+	// Summary - only show details if there are issues
+	if (MissingTools.Num() == 0)
 	{
-		StatusMessage += TEXT("\n⚠️ Some tools missing. Check Output Log.\n");
+		StatusMessage += FString::Printf(TEXT("  ✓ All %d tools operational\n"), AvailableCount);
+	}
+	else
+	{
+		StatusMessage += FString::Printf(TEXT("  ✓ %d/%d tools available\n"), AvailableCount, ExpectedTools.Num());
+		StatusMessage += TEXT("\n⚠️ Missing tools:\n");
+		for (const FString& ToolName : MissingTools)
+		{
+			StatusMessage += FString::Printf(TEXT("  ✗ %s\n"), *ToolName);
+		}
+		StatusMessage += TEXT("\nCheck Output Log for details.\n");
 	}
 
 	StatusMessage += TEXT("─────────────────────────────────");

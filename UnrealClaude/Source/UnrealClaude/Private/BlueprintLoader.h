@@ -6,6 +6,52 @@
 #include "Engine/Blueprint.h"
 
 /**
+ * Individual compile message with source info
+ */
+struct FBlueprintCompileMessage
+{
+	/** Severity: "Error", "Warning", "Info" */
+	FString Severity;
+
+	/** The message text */
+	FString Message;
+
+	/** Node name that caused the issue (if known) */
+	FString NodeName;
+
+	/** Object path for navigation (if applicable) */
+	FString ObjectPath;
+};
+
+/**
+ * Detailed result of Blueprint compilation
+ * Contains both success status and captured compiler messages
+ */
+struct FBlueprintCompileResult
+{
+	/** Overall compilation success */
+	bool bSuccess = false;
+
+	/** Status string: "UpToDate", "UpToDateWithWarnings", "Error", "Dirty" */
+	FString StatusString;
+
+	/** Full verbose compiler output */
+	FString VerboseOutput;
+
+	/** Individual compile messages (errors/warnings) */
+	TArray<FBlueprintCompileMessage> Messages;
+
+	/** Number of errors */
+	int32 ErrorCount = 0;
+
+	/** Number of warnings */
+	int32 WarningCount = 0;
+
+	/** Helper to check if there are any issues */
+	bool HasIssues() const { return ErrorCount > 0 || WarningCount > 0; }
+};
+
+/**
  * Blueprint loading and validation utilities
  *
  * Responsibilities:
@@ -48,12 +94,20 @@ public:
 	static bool IsBlueprintEditable(UBlueprint* Blueprint, FString& OutError);
 
 	/**
-	 * Compile Blueprint and capture any errors
+	 * Compile Blueprint and capture any errors (simple version)
 	 * @param Blueprint - Blueprint to compile
 	 * @param OutError - Compilation errors if any
 	 * @return true if compilation succeeded
 	 */
 	static bool CompileBlueprint(UBlueprint* Blueprint, FString& OutError);
+
+	/**
+	 * Compile Blueprint with detailed output capture
+	 * Captures full compiler output including individual error/warning messages
+	 * @param Blueprint - Blueprint to compile
+	 * @return Detailed compile result with messages
+	 */
+	static FBlueprintCompileResult CompileBlueprintWithResult(UBlueprint* Blueprint);
 
 	/**
 	 * Mark Blueprint as modified (dirty)

@@ -14,9 +14,9 @@ UnrealClaude integrates the [Claude Code CLI](https://docs.anthropic.com/en/docs
 - **Native Editor Integration** - Chat panel docked in your editor
 - **UE5.7 Context** - System prompts optimized for Unreal Engine 5.7 development
 - **MCP Server** - Model Context Protocol server for external tool integration
-- **Blueprint Editing** - Create and modify Blueprints, Animation Blueprints, state machines
+- **Blueprint Editing** - Create and modify Blueprints, Animation Blueprints, state machines (Few bugs still, don't rely on fully)
 - **Asset Management** - Search assets, query dependencies and referencers
-- **Async Task Queue** - Long-running operations won't timeout
+- **Async Task Queue** - Long-running operations won't timeout (WIP)
 - **Script Execution** - Claude can write, compile (via Live Coding), and execute scripts with your permission
 - **Session Persistence** - Conversation history saved across editor sessions
 - **Project-Aware** - Automatically gathers project context (modules, plugins, assets) and is able to see editor viewports
@@ -165,7 +165,7 @@ The `blueprint_modify` tool supports:
 - **Level 3**: Add single or batch nodes to graphs
 - **Level 4**: Connect/disconnect pins, set default pin values
 
-All modifications auto-compile the Blueprint after changes.
+All modifications auto-compile the Blueprint after changes and return detailed compile results including errors and warnings.
 
 #### Animation Blueprint Tools
 
@@ -197,6 +197,8 @@ The `anim_blueprint_modify` tool supports comprehensive state machine editing:
 - `connect_condition_nodes` - Connect condition nodes together
 - `connect_to_result` - Connect condition output to transition result
 - `add_comparison_chain` - Add GetVariable → Comparison → Result chain (auto-ANDs with existing)
+  - Supports Float, Integer, Boolean, Byte, and Enum variable types
+  - Auto-detects variable type and creates appropriate comparison node
 
 **Bulk Transition Conditions (NEW):**
 - `setup_transition_conditions` - Set up conditions for multiple transitions using pattern matching
@@ -246,7 +248,7 @@ Use `operation: "batch"` with an `operations` array to execute multiple operatio
 - `set_pin_default_value` - Set pin default value with type validation
 - `validate_blueprint` - Return compile errors with full diagnostics
 
-All modifications auto-compile the Animation Blueprint after changes.
+All modifications auto-compile the Animation Blueprint after changes and return structured compile results with error details for easy debugging.
 
 #### Asset Tools
 

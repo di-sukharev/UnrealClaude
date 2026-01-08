@@ -268,15 +268,48 @@ TSharedPtr<FJsonObject> FAnimTransitionConditionFactory::CreateComparisonChain(
 	FAnimGraphEditor::SetNodeId(GetVarNode, GetVarNodeId);
 	GetVarNode->AllocateDefaultPins();
 
-	// Find variable output pin and check if it's boolean
+	// Find variable output pin and determine type
 	auto VarOutputConfig = FPinSearchConfig::Output({}).AcceptAny();
 	UEdGraphPin* VarOutputPin = FAnimNodePinUtils::FindPinWithFallbacks(GetVarNode, VarOutputConfig);
-	bool bIsBooleanVariable = VarOutputPin && VarOutputPin->PinType.PinCategory == UEdGraphSchema_K2::PC_Boolean;
 
-	// Step 2: Create Comparison node
+	// Detect pin type for proper comparison node creation
+	bool bIsBooleanVariable = false;
+	EComparisonPinType PinType = EComparisonPinType::Float;
+
+	if (VarOutputPin)
+	{
+		if (VarOutputPin->PinType.PinCategory == UEdGraphSchema_K2::PC_Boolean)
+		{
+			bIsBooleanVariable = true;
+			PinType = EComparisonPinType::Boolean;
+		}
+		else if (VarOutputPin->PinType.PinCategory == UEdGraphSchema_K2::PC_Int)
+		{
+			PinType = EComparisonPinType::Integer;
+		}
+		else if (VarOutputPin->PinType.PinCategory == UEdGraphSchema_K2::PC_Byte)
+		{
+			// Check if it's an enum
+			if (VarOutputPin->PinType.PinSubCategoryObject.IsValid())
+			{
+				PinType = EComparisonPinType::Enum;
+			}
+			else
+			{
+				PinType = EComparisonPinType::Byte;
+			}
+		}
+		else if (VarOutputPin->PinType.PinCategory == UEdGraphSchema_K2::PC_Enum)
+		{
+			PinType = EComparisonPinType::Enum;
+		}
+		// Float/Double remains the default
+	}
+
+	// Step 2: Create Comparison node with appropriate type
 	FVector2D CompPos(Position.X + 200, Position.Y);
 	TSharedPtr<FJsonObject> CompParams = MakeShared<FJsonObject>();
-	UEdGraphNode* CompNode = CreateComparisonNode(TransitionGraph, ComparisonType, CompParams, CompPos, OutError, bIsBooleanVariable);
+	UEdGraphNode* CompNode = CreateComparisonNode(TransitionGraph, ComparisonType, CompParams, CompPos, OutError, bIsBooleanVariable, PinType);
 	if (!CompNode)
 	{
 		return MakeErrorResult(OutError);
@@ -449,7 +482,8 @@ UEdGraphNode* FAnimTransitionConditionFactory::CreateComparisonNode(
 	const TSharedPtr<FJsonObject>& Params,
 	FVector2D Position,
 	FString& OutError,
-	bool bIsBooleanType)
+	bool bIsBooleanType,
+	EComparisonPinType PinType)
 {
 	if (!Graph)
 	{
@@ -459,8 +493,9 @@ UEdGraphNode* FAnimTransitionConditionFactory::CreateComparisonNode(
 
 	FName FunctionName;
 
-	if (bIsBooleanType)
+	if (bIsBooleanType || PinType == EComparisonPinType::Boolean)
 	{
+		// Boolean comparison
 		if (ComparisonType.Equals(TEXT("Equal"), ESearchCase::IgnoreCase))
 		{
 			FunctionName = GET_FUNCTION_NAME_CHECKED(UKismetMathLibrary, EqualEqual_BoolBool);
@@ -475,8 +510,75 @@ UEdGraphNode* FAnimTransitionConditionFactory::CreateComparisonNode(
 			return nullptr;
 		}
 	}
+	else if (PinType == EComparisonPinType::Integer)
+	{
+		// Integer comparison
+		if (ComparisonType.Equals(TEXT("Greater"), ESearchCase::IgnoreCase))
+		{
+			FunctionName = GET_FUNCTION_NAME_CHECKED(UKismetMathLibrary, Greater_IntInt);
+		}
+		else if (ComparisonType.Equals(TEXT("Less"), ESearchCase::IgnoreCase))
+		{
+			FunctionName = GET_FUNCTION_NAME_CHECKED(UKismetMathLibrary, Less_IntInt);
+		}
+		else if (ComparisonType.Equals(TEXT("GreaterEqual"), ESearchCase::IgnoreCase))
+		{
+			FunctionName = GET_FUNCTION_NAME_CHECKED(UKismetMathLibrary, GreaterEqual_IntInt);
+		}
+		else if (ComparisonType.Equals(TEXT("LessEqual"), ESearchCase::IgnoreCase))
+		{
+			FunctionName = GET_FUNCTION_NAME_CHECKED(UKismetMathLibrary, LessEqual_IntInt);
+		}
+		else if (ComparisonType.Equals(TEXT("Equal"), ESearchCase::IgnoreCase))
+		{
+			FunctionName = GET_FUNCTION_NAME_CHECKED(UKismetMathLibrary, EqualEqual_IntInt);
+		}
+		else if (ComparisonType.Equals(TEXT("NotEqual"), ESearchCase::IgnoreCase))
+		{
+			FunctionName = GET_FUNCTION_NAME_CHECKED(UKismetMathLibrary, NotEqual_IntInt);
+		}
+		else
+		{
+			OutError = FString::Printf(TEXT("Unknown comparison type: %s"), *ComparisonType);
+			return nullptr;
+		}
+	}
+	else if (PinType == EComparisonPinType::Byte || PinType == EComparisonPinType::Enum)
+	{
+		// Byte/Enum comparison (enums are stored as bytes)
+		if (ComparisonType.Equals(TEXT("Equal"), ESearchCase::IgnoreCase))
+		{
+			FunctionName = GET_FUNCTION_NAME_CHECKED(UKismetMathLibrary, EqualEqual_ByteByte);
+		}
+		else if (ComparisonType.Equals(TEXT("NotEqual"), ESearchCase::IgnoreCase))
+		{
+			FunctionName = GET_FUNCTION_NAME_CHECKED(UKismetMathLibrary, NotEqual_ByteByte);
+		}
+		else if (ComparisonType.Equals(TEXT("Greater"), ESearchCase::IgnoreCase))
+		{
+			FunctionName = GET_FUNCTION_NAME_CHECKED(UKismetMathLibrary, Greater_ByteByte);
+		}
+		else if (ComparisonType.Equals(TEXT("Less"), ESearchCase::IgnoreCase))
+		{
+			FunctionName = GET_FUNCTION_NAME_CHECKED(UKismetMathLibrary, Less_ByteByte);
+		}
+		else if (ComparisonType.Equals(TEXT("GreaterEqual"), ESearchCase::IgnoreCase))
+		{
+			FunctionName = GET_FUNCTION_NAME_CHECKED(UKismetMathLibrary, GreaterEqual_ByteByte);
+		}
+		else if (ComparisonType.Equals(TEXT("LessEqual"), ESearchCase::IgnoreCase))
+		{
+			FunctionName = GET_FUNCTION_NAME_CHECKED(UKismetMathLibrary, LessEqual_ByteByte);
+		}
+		else
+		{
+			OutError = FString::Printf(TEXT("Unknown comparison type for enum/byte: %s"), *ComparisonType);
+			return nullptr;
+		}
+	}
 	else
 	{
+		// Float/Double comparison (default)
 		if (ComparisonType.Equals(TEXT("Greater"), ESearchCase::IgnoreCase))
 		{
 			FunctionName = GET_FUNCTION_NAME_CHECKED(UKismetMathLibrary, Greater_DoubleDouble);

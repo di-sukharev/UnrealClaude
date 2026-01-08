@@ -6,6 +6,7 @@
 #include "MCPToolRegistry.h"
 #include "MCPParamValidator.h"
 #include "BlueprintUtils.h"
+#include "BlueprintLoader.h"
 #include "Engine/Blueprint.h"
 
 /**
@@ -33,6 +34,9 @@ public:
 
 	/** Last error message (for custom error handling) */
 	FString LastError;
+
+	/** Detailed compile result (populated after CompileAndFinalize) */
+	FBlueprintCompileResult CompileResult;
 
 	/**
 	 * Load and validate a Blueprint from JSON parameters
@@ -112,6 +116,7 @@ public:
 	/**
 	 * Compile the Blueprint and mark it dirty
 	 * Call this after making modifications
+	 * Stores detailed compile result in CompileResult member
 	 *
 	 * @param OperationName - Name of the operation for error messages
 	 * @return Error result if compilation fails, empty optional on success
@@ -124,11 +129,14 @@ public:
 			return FMCPToolResult::Error(LastError);
 		}
 
-		// Compile the Blueprint
-		if (!FBlueprintUtils::CompileBlueprint(Blueprint, LastError))
+		// Compile with detailed result capture
+		CompileResult = FBlueprintLoader::CompileBlueprintWithResult(Blueprint);
+
+		if (!CompileResult.bSuccess)
 		{
+			LastError = CompileResult.VerboseOutput;
 			return FMCPToolResult::Error(FString::Printf(
-				TEXT("%s succeeded but compilation failed: %s"), *OperationName, *LastError));
+				TEXT("%s succeeded but compilation failed:\n%s"), *OperationName, *CompileResult.VerboseOutput));
 		}
 
 		// Mark dirty
@@ -138,8 +146,9 @@ public:
 	}
 
 	/**
-	 * Build standard result JSON with blueprint info
-	 * @return JSON object with blueprint_path and compiled fields
+	 * Build standard result JSON with blueprint info and compile details
+	 * Includes compile messages (errors/warnings) when present
+	 * @return JSON object with blueprint_path, compiled, and compile_output fields
 	 */
 	TSharedPtr<FJsonObject> BuildResultJson() const
 	{
@@ -147,7 +156,35 @@ public:
 		if (Blueprint)
 		{
 			ResultData->SetStringField(TEXT("blueprint_path"), Blueprint->GetPathName());
-			ResultData->SetBoolField(TEXT("compiled"), true);
+			ResultData->SetBoolField(TEXT("compiled"), CompileResult.bSuccess);
+			ResultData->SetStringField(TEXT("compile_status"), CompileResult.StatusString);
+
+			// Always include compile info when there are messages (errors OR warnings)
+			if (CompileResult.HasIssues() || !CompileResult.bSuccess)
+			{
+				ResultData->SetNumberField(TEXT("error_count"), CompileResult.ErrorCount);
+				ResultData->SetNumberField(TEXT("warning_count"), CompileResult.WarningCount);
+				ResultData->SetStringField(TEXT("compile_output"), CompileResult.VerboseOutput);
+
+				// Include structured messages array
+				TArray<TSharedPtr<FJsonValue>> MessagesArray;
+				for (const FBlueprintCompileMessage& Msg : CompileResult.Messages)
+				{
+					TSharedPtr<FJsonObject> MsgObj = MakeShared<FJsonObject>();
+					MsgObj->SetStringField(TEXT("severity"), Msg.Severity);
+					MsgObj->SetStringField(TEXT("message"), Msg.Message);
+					if (!Msg.NodeName.IsEmpty())
+					{
+						MsgObj->SetStringField(TEXT("node"), Msg.NodeName);
+					}
+					if (!Msg.ObjectPath.IsEmpty())
+					{
+						MsgObj->SetStringField(TEXT("object_path"), Msg.ObjectPath);
+					}
+					MessagesArray.Add(MakeShared<FJsonValueObject>(MsgObj));
+				}
+				ResultData->SetArrayField(TEXT("compile_messages"), MessagesArray);
+			}
 		}
 		return ResultData;
 	}
