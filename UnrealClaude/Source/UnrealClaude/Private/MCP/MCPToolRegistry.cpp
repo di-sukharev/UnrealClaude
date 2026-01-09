@@ -193,28 +193,32 @@ FMCPToolResult FMCPToolRegistry::ExecuteTool(const FString& ToolName, const TSha
 	else
 	{
 		// If called from non-game thread, dispatch to game thread and wait with timeout
-		FEvent* CompletionEvent = FPlatformProcess::GetSynchEventFromPool();
+		// Use shared pointers for all state to avoid use-after-free if timeout occurs
+		TSharedPtr<FMCPToolResult> SharedResult = MakeShared<FMCPToolResult>();
+		TSharedPtr<FEvent, ESPMode::ThreadSafe> CompletionEvent = MakeShareable(FPlatformProcess::GetSynchEventFromPool(),
+			[](FEvent* Event) { FPlatformProcess::ReturnSynchEventToPool(Event); });
+		TSharedPtr<TAtomic<bool>, ESPMode::ThreadSafe> bTaskCompleted = MakeShared<TAtomic<bool>, ESPMode::ThreadSafe>(false);
 
-		// Use atomic to safely check if task completed
-		TAtomic<bool> bTaskCompleted(false);
-
-		AsyncTask(ENamedThreads::GameThread, [&Result, FoundTool, &Params, CompletionEvent, &bTaskCompleted]()
+		// Capture shared pointers by value so lambda keeps them alive
+		AsyncTask(ENamedThreads::GameThread, [SharedResult, FoundTool, Params, CompletionEvent, bTaskCompleted]()
 		{
-			Result = (*FoundTool)->Execute(Params);
-			bTaskCompleted = true;
+			*SharedResult = (*FoundTool)->Execute(Params);
+			*bTaskCompleted = true;
 			CompletionEvent->Trigger();
 		});
 
 		// Wait with timeout to prevent indefinite hangs
 		const uint32 TimeoutMs = UnrealClaudeConstants::MCPServer::GameThreadTimeoutMs;
 		const bool bSignaled = CompletionEvent->Wait(TimeoutMs);
-		FPlatformProcess::ReturnSynchEventToPool(CompletionEvent);
 
-		if (!bSignaled || !bTaskCompleted)
+		if (!bSignaled || !(*bTaskCompleted))
 		{
 			UE_LOG(LogUnrealClaude, Error, TEXT("Tool '%s' execution timed out after %d ms"), *ToolName, TimeoutMs);
 			return FMCPToolResult::Error(FString::Printf(TEXT("Tool execution timed out after %d seconds"), TimeoutMs / 1000));
 		}
+
+		// Copy result from shared storage
+		Result = *SharedResult;
 	}
 
 	UE_LOG(LogUnrealClaude, Log, TEXT("Tool '%s' execution %s: %s"),
