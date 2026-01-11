@@ -30,7 +30,7 @@ FMCPToolResult FMCPTool_GetOutputLog::Execute(const TSharedRef<FJsonObject>& Par
 
 	if (!FPaths::FileExists(LogFilePath))
 	{
-		// Try to find any .log file in the log directory
+		// Try to find any .log file in the project log directory
 		TArray<FString> LogFiles;
 		IFileManager::Get().FindFiles(LogFiles, *FPaths::ProjectLogDir(), TEXT("*.log"));
 
@@ -40,7 +40,23 @@ FMCPToolResult FMCPTool_GetOutputLog::Execute(const TSharedRef<FJsonObject>& Par
 		}
 		else
 		{
-			return FMCPToolResult::Error(TEXT("No log file found"));
+			// Fallback to engine saved logs directory
+			FString EngineSavedLogs = FPaths::EngineDir() / TEXT("Saved/Logs");
+			LogFilePath = EngineSavedLogs / TEXT("UnrealEditor.log");
+			if (!FPaths::FileExists(LogFilePath))
+			{
+				IFileManager::Get().FindFiles(LogFiles, *EngineSavedLogs, TEXT("*.log"));
+				if (LogFiles.Num() > 0)
+				{
+					LogFilePath = EngineSavedLogs / LogFiles[0];
+				}
+				else
+				{
+					return FMCPToolResult::Error(
+						FString::Printf(TEXT("No log file found. Searched: %s and %s"),
+							*FPaths::ProjectLogDir(), *EngineSavedLogs));
+				}
+			}
 		}
 	}
 

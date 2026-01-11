@@ -439,6 +439,7 @@ protected:
 	/**
 	 * Load an actor class by path with fallback prefixes
 	 * Tries: full path, /Script/Engine., /Script/CoreUObject., FindObject
+	 * For Blueprint paths (/Game/...), automatically tries with _C suffix
 	 * @param ClassPath - Class path or short name
 	 * @param OutError - Optional error result if class not found
 	 * @return Actor class or nullptr
@@ -446,6 +447,13 @@ protected:
 	UClass* LoadActorClass(const FString& ClassPath, TOptional<FMCPToolResult>& OutError) const
 	{
 		UClass* ActorClass = LoadClass<AActor>(nullptr, *ClassPath);
+
+		// For Blueprint paths, try with _C suffix if not already present
+		if (!ActorClass && ClassPath.StartsWith(TEXT("/Game/")) && !ClassPath.EndsWith(TEXT("_C")))
+		{
+			FString BlueprintClassPath = ClassPath + TEXT("_C");
+			ActorClass = LoadClass<AActor>(nullptr, *BlueprintClassPath);
+		}
 
 		if (!ActorClass)
 		{

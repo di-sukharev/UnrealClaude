@@ -206,6 +206,37 @@ bool FMCPTool_SetProperty::SetNumericPropertyValue(FNumericProperty* NumProp, vo
 
 bool FMCPTool_SetProperty::SetStructPropertyValue(FStructProperty* StructProp, void* ValuePtr, const TSharedPtr<FJsonValue>& Value)
 {
+	// Check for hex string format first (works for both FColor and FLinearColor)
+	FString HexString;
+	if (Value->TryGetString(HexString))
+	{
+		// Remove # prefix if present
+		if (HexString.StartsWith(TEXT("#")))
+		{
+			HexString = HexString.RightChop(1);
+		}
+
+		// Validate hex string (6 or 8 characters for RGB or RGBA)
+		if (HexString.Len() == 6 || HexString.Len() == 8)
+		{
+			FColor ParsedColor = FColor::FromHex(HexString);
+
+			if (StructProp->Struct == TBaseStructure<FColor>::Get())
+			{
+				*reinterpret_cast<FColor*>(ValuePtr) = ParsedColor;
+				return true;
+			}
+
+			if (StructProp->Struct == TBaseStructure<FLinearColor>::Get())
+			{
+				// Convert FColor (0-255) to FLinearColor (0.0-1.0)
+				*reinterpret_cast<FLinearColor*>(ValuePtr) = FLinearColor(ParsedColor);
+				return true;
+			}
+		}
+	}
+
+	// Try object format
 	const TSharedPtr<FJsonObject>* ObjVal;
 	if (!Value->TryGetObject(ObjVal))
 	{
@@ -232,19 +263,44 @@ bool FMCPTool_SetProperty::SetStructPropertyValue(FStructProperty* StructProp, v
 		return true;
 	}
 
+	// FColor - uses uint8 values (0-255)
+	if (StructProp->Struct == TBaseStructure<FColor>::Get())
+	{
+		FColor Color;
+		int32 R = 0, G = 0, B = 0, A = 255;
+		(*ObjVal)->TryGetNumberField(TEXT("r"), R);
+		(*ObjVal)->TryGetNumberField(TEXT("g"), G);
+		(*ObjVal)->TryGetNumberField(TEXT("b"), B);
+		if (!(*ObjVal)->TryGetNumberField(TEXT("a"), A))
+		{
+			A = 255; // Default to fully opaque
+		}
+		Color.R = static_cast<uint8>(FMath::Clamp(R, 0, 255));
+		Color.G = static_cast<uint8>(FMath::Clamp(G, 0, 255));
+		Color.B = static_cast<uint8>(FMath::Clamp(B, 0, 255));
+		Color.A = static_cast<uint8>(FMath::Clamp(A, 0, 255));
+		*reinterpret_cast<FColor*>(ValuePtr) = Color;
+		return true;
+	}
+
+	// FLinearColor - uses float values (0.0-1.0)
 	if (StructProp->Struct == TBaseStructure<FLinearColor>::Get())
 	{
 		FLinearColor Color;
 		(*ObjVal)->TryGetNumberField(TEXT("r"), Color.R);
 		(*ObjVal)->TryGetNumberField(TEXT("g"), Color.G);
 		(*ObjVal)->TryGetNumberField(TEXT("b"), Color.B);
-		(*ObjVal)->TryGetNumberField(TEXT("a"), Color.A);
+		if (!(*ObjVal)->TryGetNumberField(TEXT("a"), Color.A))
+		{
+			Color.A = 1.0f; // Default to fully opaque
+		}
 		*reinterpret_cast<FLinearColor*>(ValuePtr) = Color;
 		return true;
 	}
 
 	return false;
 }
+
 
 /**
  * Set a property value on an object using Unreal's reflection system.
