@@ -240,13 +240,81 @@ TObjectPtr<UStaticMesh> KeepLoadedMesh;
 
 ## MCP Asset Operations
 
-Available via `asset_search`, `asset_dependencies`, `asset_referencers`:
+### Search and Dependency Tools
 
 | Tool | Description |
 |------|-------------|
 | `asset_search` | Find assets by name/type/path |
 | `asset_dependencies` | Get what an asset depends on |
 | `asset_referencers` | Get what references an asset |
+
+### Generic Asset Tool
+
+The `asset` tool provides generic operations for modifying and saving Content Browser assets.
+
+| Operation | Description | Required Params |
+|-----------|-------------|-----------------|
+| `set_asset_property` | Set a property on an asset | asset_path, property, value |
+| `save_asset` | Save asset to disk | asset_path |
+| `get_asset_info` | Get asset information | asset_path |
+| `list_assets` | List assets in directory | directory |
+
+### Example Usage
+
+```json
+// Set a boolean property
+{
+  "operation": "set_asset_property",
+  "asset_path": "/Game/Characters/SK_Character",
+  "property": "bEnablePerPolyCollision",
+  "value": true
+}
+
+// Set an object reference (like a material)
+{
+  "operation": "set_asset_property",
+  "asset_path": "/Game/Characters/SK_Character",
+  "property": "Materials.0.MaterialInterface",
+  "value": "/Game/Materials/MI_NewMaterial"
+}
+
+// Save an asset to disk
+{
+  "operation": "save_asset",
+  "asset_path": "/Game/Characters/SK_Character",
+  "save": true
+}
+
+// Get asset information with properties
+{
+  "operation": "get_asset_info",
+  "asset_path": "/Game/Characters/SK_Character",
+  "include_properties": true
+}
+
+// List assets in a directory
+{
+  "operation": "list_assets",
+  "directory": "/Game/Characters/",
+  "class_filter": "SkeletalMesh",
+  "recursive": true,
+  "limit": 50
+}
+```
+
+### Supported Property Types
+
+| Type | JSON Value | Example |
+|------|------------|---------|
+| bool | boolean | `true` |
+| int32, int64 | number | `42` |
+| float, double | number | `3.14` |
+| FString | string | `"text"` |
+| FName | string | `"Name"` |
+| FVector | object | `{"x": 1, "y": 2, "z": 3}` |
+| FRotator | object | `{"pitch": 0, "yaw": 90, "roll": 0}` |
+| FLinearColor | object | `{"r": 1, "g": 0, "b": 0, "a": 1}` |
+| UObject* | string (path) | `"/Game/Assets/MyAsset"` |
 
 ## Best Practices
 

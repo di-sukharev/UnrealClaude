@@ -26,6 +26,8 @@
 #include "Tools/MCPTool_EnhancedInput.h"
 #include "Tools/MCPTool_Character.h"
 #include "Tools/MCPTool_CharacterData.h"
+#include "Tools/MCPTool_Material.h"
+#include "Tools/MCPTool_Asset.h"
 
 // Task queue tools
 #include "Tools/MCPTool_TaskSubmit.h"
@@ -98,6 +100,10 @@ void FMCPToolRegistry::RegisterBuiltinTools()
 	// Character tools
 	RegisterTool(MakeShared<FMCPTool_Character>());
 	RegisterTool(MakeShared<FMCPTool_CharacterData>());
+
+	// Material and Asset tools
+	RegisterTool(MakeShared<FMCPTool_Material>());
+	RegisterTool(MakeShared<FMCPTool_Asset>());
 
 	// Create and register async task queue tools
 	// Task queue takes a raw pointer since the registry always outlives it
