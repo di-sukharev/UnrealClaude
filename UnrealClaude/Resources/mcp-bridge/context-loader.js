@@ -160,6 +160,27 @@ const CONTEXT_CONFIG = {
       "npc",
     ],
   },
+  material: {
+    files: ["material.md"],
+    toolPatterns: [/^material/, /skeletal_mesh_material/],
+    keywords: [
+      "material",
+      "material instance",
+      "materialinstance",
+      "mic",
+      "mid",
+      "scalar parameter",
+      "vector parameter",
+      "texture parameter",
+      "parent material",
+      "material slot",
+      "roughness",
+      "metallic",
+      "base color",
+      "emissive",
+      "opacity",
+    ],
+  },
 };
 
 // Cache for loaded context files
