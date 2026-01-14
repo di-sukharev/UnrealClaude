@@ -15,12 +15,20 @@
 #include "Serialization/JsonWriter.h"
 #include "Dom/JsonObject.h"
 
-// Only compile on Windows
+// Platform-specific includes
 #if PLATFORM_WINDOWS
 #include "Windows/WindowsHWrapper.h"
 #include "Windows/AllowWindowsPlatformTypes.h"
 #include <windows.h>
 #include "Windows/HideWindowsPlatformTypes.h"
+#elif PLATFORM_MAC
+#include <unistd.h>
+#include <signal.h>
+#include <sys/wait.h>
+#include <fcntl.h>
+#include <errno.h>
+#include <spawn.h>
+extern char **environ;
 #endif
 
 FClaudeCodeRunner::FClaudeCodeRunner()
@@ -79,12 +87,39 @@ void FClaudeCodeRunner::CleanupHandles()
 		CloseHandle((HANDLE)StdInWritePipe);
 		StdInWritePipe = nullptr;
 	}
+#elif PLATFORM_MAC
+	// On macOS, handles are file descriptors stored as intptr_t in void*
+	if (ProcessHandle)
+	{
+		// ProcessHandle stores the PID on macOS, no need to close
+		ProcessHandle = nullptr;
+	}
+	if (ReadPipe)
+	{
+		close((int)(intptr_t)ReadPipe);
+		ReadPipe = nullptr;
+	}
+	if (WritePipe)
+	{
+		close((int)(intptr_t)WritePipe);
+		WritePipe = nullptr;
+	}
+	if (StdInReadPipe)
+	{
+		close((int)(intptr_t)StdInReadPipe);
+		StdInReadPipe = nullptr;
+	}
+	if (StdInWritePipe)
+	{
+		close((int)(intptr_t)StdInWritePipe);
+		StdInWritePipe = nullptr;
+	}
 #endif
 }
 
 bool FClaudeCodeRunner::IsClaudeAvailable()
 {
-#if PLATFORM_WINDOWS
+#if PLATFORM_WINDOWS || PLATFORM_MAC
 	FString ClaudePath = GetClaudePath();
 	return !ClaudePath.IsEmpty();
 #else
@@ -178,10 +213,86 @@ FString FClaudeCodeRunner::GetClaudePath()
 	}
 
 	UE_LOG(LogUnrealClaude, Warning, TEXT("Claude CLI not found. Please install with: npm install -g @anthropic-ai/claude-code"));
+#elif PLATFORM_MAC
+	// Cache the path to avoid repeated lookups and log spam
+	static FString CachedClaudePath;
+	static bool bHasSearched = false;
+
+	if (bHasSearched && !CachedClaudePath.IsEmpty())
+	{
+		return CachedClaudePath;
+	}
+	bHasSearched = true;
+
+	// Check common locations for claude CLI on macOS
+	TArray<FString> PossiblePaths;
+
+	// User home directory
+	FString HomeDir = FPlatformMisc::GetEnvironmentVariable(TEXT("HOME"));
+	if (!HomeDir.IsEmpty())
+	{
+		// Claude Code native installer location
+		PossiblePaths.Add(FPaths::Combine(HomeDir, TEXT(".local"), TEXT("bin"), TEXT("claude")));
+		
+		// npm global install locations
+		PossiblePaths.Add(FPaths::Combine(HomeDir, TEXT(".npm-global"), TEXT("bin"), TEXT("claude")));
+		PossiblePaths.Add(FPaths::Combine(HomeDir, TEXT(".nvm"), TEXT("versions"), TEXT("node"), TEXT("*"), TEXT("bin"), TEXT("claude")));
+		
+		// Homebrew npm location (Intel Mac)
+		PossiblePaths.Add(FPaths::Combine(TEXT("/usr/local/bin"), TEXT("claude")));
+		
+		// Homebrew npm location (Apple Silicon)
+		PossiblePaths.Add(FPaths::Combine(TEXT("/opt/homebrew/bin"), TEXT("claude")));
+	}
+
+	// Check PATH
+	FString PathEnv = FPlatformMisc::GetEnvironmentVariable(TEXT("PATH"));
+	TArray<FString> PathDirs;
+	PathEnv.ParseIntoArray(PathDirs, TEXT(":"), true);
+	
+	for (const FString& Dir : PathDirs)
+	{
+		PossiblePaths.Add(FPaths::Combine(Dir, TEXT("claude")));
+	}
+	
+	// Check each path
+	for (const FString& Path : PossiblePaths)
+	{
+		if (IFileManager::Get().FileExists(*Path))
+		{
+			UE_LOG(LogUnrealClaude, Log, TEXT("Found Claude CLI at: %s"), *Path);
+			CachedClaudePath = Path;
+			return CachedClaudePath;
+		}
+	}
+
+	// Try using 'which' command as fallback
+	FString WhichOutput;
+	FString WhichErrors;
+	int32 ReturnCode;
+
+	if (FPlatformProcess::ExecProcess(TEXT("/usr/bin/which"), TEXT("claude"), &ReturnCode, &WhichOutput, &WhichErrors) && ReturnCode == 0)
+	{
+		WhichOutput.TrimStartAndEndInline();
+		TArray<FString> Lines;
+		WhichOutput.ParseIntoArrayLines(Lines);
+		if (Lines.Num() > 0)
+		{
+			UE_LOG(LogUnrealClaude, Log, TEXT("Found Claude CLI via 'which': %s"), *Lines[0]);
+			CachedClaudePath = Lines[0];
+			return CachedClaudePath;
+		}
+	}
+
+	UE_LOG(LogUnrealClaude, Warning, TEXT("Claude CLI not found. Please install with: npm install -g @anthropic-ai/claude-code"));
 #endif
 
 	// CachedClaudePath remains empty if not found
+#if PLATFORM_WINDOWS || PLATFORM_MAC
 	return CachedClaudePath;
+#else
+	return FString();
+#endif
 }
 
 bool FClaudeCodeRunner::ExecuteAsync(
@@ -497,6 +608,28 @@ void FClaudeCodeRunner::Cancel()
 	{
 		CloseHandle(LocalWrite);
 	}
+#elif PLATFORM_MAC
+	// Use atomic exchange for thread-safe handle extraction
+	void* LocalProcess = FPlatformAtomics::InterlockedExchangePtr(&ProcessHandle, nullptr);
+	void* LocalRead = FPlatformAtomics::InterlockedExchangePtr(&ReadPipe, nullptr);
+	void* LocalWrite = FPlatformAtomics::InterlockedExchangePtr(&WritePipe, nullptr);
+
+	if (LocalProcess)
+	{
+		pid_t Pid = (pid_t)(intptr_t)LocalProcess;
+		kill(Pid, SIGTERM);
+		// Give it a moment to terminate gracefully, then force kill
+		usleep(100000); // 100ms
+		kill(Pid, SIGKILL);
+	}
+	if (LocalRead)
+	{
+		close((int)(intptr_t)LocalRead);
+	}
+	if (LocalWrite)
+	{
+		close((int)(intptr_t)LocalWrite);
+	}
 #endif
 }
 
@@ -691,6 +824,254 @@ void FClaudeCodeRunner::ReportCompletion(const FString& Output, bool bSuccess)
 }
 #endif // PLATFORM_WINDOWS
 
+#if PLATFORM_MAC
+// Helper function to get a human-readable error message on macOS
+static FString GetMacErrorMessage(int ErrorCode)
+{
+	FString Message = FString::Printf(TEXT("Error code %d: %s"), ErrorCode, UTF8_TO_TCHAR(strerror(ErrorCode)));
+	return Message;
+}
+
+bool FClaudeCodeRunner::CreateProcessPipes()
+{
+	int StdOutPipe[2];
+	int StdInPipe[2];
+
+	// Create stdout pipe
+	if (pipe(StdOutPipe) == -1)
+	{
+		UE_LOG(LogUnrealClaude, Error, TEXT("Failed to create stdout pipe: %s"), UTF8_TO_TCHAR(strerror(errno)));
+		return false;
+	}
+
+	// Create stdin pipe
+	if (pipe(StdInPipe) == -1)
+	{
+		close(StdOutPipe[0]);
+		close(StdOutPipe[1]);
+		UE_LOG(LogUnrealClaude, Error, TEXT("Failed to create stdin pipe: %s"), UTF8_TO_TCHAR(strerror(errno)));
+		return false;
+	}
+
+	// Store pipe file descriptors as void* (using intptr_t for safe casting)
+	ReadPipe = (void*)(intptr_t)StdOutPipe[0];   // Parent reads from this
+	WritePipe = (void*)(intptr_t)StdOutPipe[1];  // Child writes to this
+	StdInReadPipe = (void*)(intptr_t)StdInPipe[0];  // Child reads from this
+	StdInWritePipe = (void*)(intptr_t)StdInPipe[1]; // Parent writes to this
+
+	return true;
+}
+
+bool FClaudeCodeRunner::LaunchProcess(const FString& FullCommand, const FString& WorkingDir)
+{
+	int StdOutWriteFd = (int)(intptr_t)WritePipe;
+	int StdInReadFd = (int)(intptr_t)StdInReadPipe;
+	int StdOutReadFd = (int)(intptr_t)ReadPipe;
+	int StdInWriteFd = (int)(intptr_t)StdInWritePipe;
+
+	// Parse the command BEFORE fork() to avoid calling UE functions in child process
+	// FullCommand is like: "/path/to/claude" -p --verbose ...
+	TArray<FString> Args;
+	FString RemainingCommand = FullCommand;
+	
+	while (!RemainingCommand.IsEmpty())
+	{
+		RemainingCommand.TrimStartInline();
+		if (RemainingCommand.IsEmpty()) break;
+		
+		FString Arg;
+		if (RemainingCommand.StartsWith(TEXT("\"")))
+		{
+			// Quoted argument
+			int32 EndQuote = RemainingCommand.Find(TEXT("\""), ESearchCase::IgnoreCase, ESearchDir::FromStart, 1);
+			if (EndQuote != INDEX_NONE)
+			{
+				Arg = RemainingCommand.Mid(1, EndQuote - 1);
+				RemainingCommand = RemainingCommand.Mid(EndQuote + 1);
+			}
+			else
+			{
+				Arg = RemainingCommand.Mid(1);
+				RemainingCommand.Empty();
+			}
+		}
+		else
+		{
+			// Unquoted argument
+			int32 Space = RemainingCommand.Find(TEXT(" "));
+			if (Space != INDEX_NONE)
+			{
+				Arg = RemainingCommand.Left(Space);
+				RemainingCommand = RemainingCommand.Mid(Space + 1);
+			}
+			else
+			{
+				Arg = RemainingCommand;
+				RemainingCommand.Empty();
+			}
+		}
+		
+		if (!Arg.IsEmpty())
+		{
+			Args.Add(Arg);
+		}
+	}
+
+	if (Args.Num() == 0)
+	{
+		LastProcessError = EINVAL;
+		UE_LOG(LogUnrealClaude, Error, TEXT("No arguments parsed from command: %s"), *FullCommand);
+		return false;
+	}
+
+	// Convert to C-style strings BEFORE fork()
+	TArray<FTCHARToUTF8> Utf8Args;
+	TArray<char*> CArgs;
+	Utf8Args.Reserve(Args.Num());
+	CArgs.Reserve(Args.Num() + 1);
+	
+	for (const FString& Arg : Args)
+	{
+		Utf8Args.Add(FTCHARToUTF8(*Arg));
+	}
+	for (FTCHARToUTF8& Utf8Arg : Utf8Args)
+	{
+		CArgs.Add(const_cast<char*>(Utf8Arg.Get()));
+	}
+	CArgs.Add(nullptr);
+
+	// Convert working directory before fork
+	FTCHARToUTF8 Utf8WorkingDir(*WorkingDir);
+
+	pid_t Pid = fork();
+
+	if (Pid == -1)
+	{
+		LastProcessError = errno;
+		UE_LOG(LogUnrealClaude, Error, TEXT("fork() failed with error: %s"), UTF8_TO_TCHAR(strerror(errno)));
+		return false;
+	}
+
+	if (Pid == 0)
+	{
+		// Child process - ONLY use pre-computed C strings, no UE functions!
+		
+		// Change to working directory
+		if (chdir(Utf8WorkingDir.Get()) != 0)
+		{
+			_exit(1);
+		}
+
+		// Set up stdin
+		dup2(StdInReadFd, STDIN_FILENO);
+		close(StdInReadFd);
+		close(StdInWriteFd);
+
+		// Set up stdout/stderr
+		dup2(StdOutWriteFd, STDOUT_FILENO);
+		dup2(StdOutWriteFd, STDERR_FILENO);
+		close(StdOutWriteFd);
+		close(StdOutReadFd);
+
+		// Execute - CArgs[0] is the program path
+		execve(CArgs[0], CArgs.GetData(), environ);
+		
+		// If execve returns, it failed
+		_exit(1);
+	}
+
+	// Parent process
+	LastProcessError = 0;
+	ProcessHandle = (void*)(intptr_t)Pid;
+
+	// Close the child's ends of the pipes
+	close(StdOutWriteFd);
+	WritePipe = nullptr;
+
+	close(StdInReadFd);
+	StdInReadPipe = nullptr;
+
+	return true;
+}
+
+FString FClaudeCodeRunner::ReadProcessOutput()
+{
+	FString FullOutput;
+	char Buffer[4096];
+
+	int StdOutReadFd = (int)(intptr_t)ReadPipe;
+	pid_t Pid = (pid_t)(intptr_t)ProcessHandle;
+
+	// Set non-blocking mode for the read pipe
+	int Flags = fcntl(StdOutReadFd, F_GETFL, 0);
+	fcntl(StdOutReadFd, F_SETFL, Flags | O_NONBLOCK);
+
+	while (!StopTaskCounter.GetValue())
+	{
+		// Check if process is done
+		int Status;
+		pid_t Result = waitpid(Pid, &Status, WNOHANG);
+
+		// Read any available output
+		ssize_t BytesRead;
+		while ((BytesRead = read(StdOutReadFd, Buffer, sizeof(Buffer) - 1)) > 0)
+		{
+			Buffer[BytesRead] = '\0';
+			FString OutputChunk = UTF8_TO_TCHAR(Buffer);
+			FullOutput += OutputChunk;
+
+			// Report progress
+			if (OnProgressDelegate.IsBound())
+			{
+				FOnClaudeProgress ProgressCopy = OnProgressDelegate;
+				FString ProgressChunk = OutputChunk;
+				AsyncTask(ENamedThreads::GameThread, [ProgressCopy, ProgressChunk]()
+				{
+					ProgressCopy.ExecuteIfBound(ProgressChunk);
+				});
+			}
+		}
+
+		if (Result == Pid)
+		{
+			// Process finished - read any remaining output (switch to blocking for final read)
+			fcntl(StdOutReadFd, F_SETFL, Flags); // Remove non-blocking
+			while ((BytesRead = read(StdOutReadFd, Buffer, sizeof(Buffer) - 1)) > 0)
+			{
+				Buffer[BytesRead] = '\0';
+				FullOutput += UTF8_TO_TCHAR(Buffer);
+			}
+			break;
+		}
+
+		// Small sleep to avoid busy-waiting
+		usleep(10000); // 10ms
+	}
+
+	return FullOutput;
+}
+
+void FClaudeCodeRunner::ReportError(const FString& ErrorMessage)
+{
+	FOnClaudeResponse CompleteCopy = OnCompleteDelegate;
+	FString Message = ErrorMessage;
+	AsyncTask(ENamedThreads::GameThread, [CompleteCopy, Message]()
+	{
+		CompleteCopy.ExecuteIfBound(Message, false);
+	});
+}
+
+void FClaudeCodeRunner::ReportCompletion(const FString& Output, bool bSuccess)
+{
+	FOnClaudeResponse CompleteCopy = OnCompleteDelegate;
+	FString FinalOutput = Output;
+	AsyncTask(ENamedThreads::GameThread, [CompleteCopy, FinalOutput, bSuccess]()
+	{
+		CompleteCopy.ExecuteIfBound(FinalOutput, bSuccess);
+	});
+}
+#endif // PLATFORM_MAC
+
 void FClaudeCodeRunner::ExecuteProcess()
 {
 #if PLATFORM_WINDOWS
@@ -823,7 +1204,136 @@ void FClaudeCodeRunner::ExecuteProcess()
 	bool bSuccess = (ExitCode == 0) && !StopTaskCounter.GetValue();
 	ReportCompletion(FullOutput, bSuccess);
 
-#endif // PLATFORM_WINDOWS
+#elif PLATFORM_MAC
+	FString ClaudePath = GetClaudePath();
+
+	// Verify the path exists
+	if (ClaudePath.IsEmpty())
+	{
+		ReportError(TEXT("Claude CLI not found. Please install with: npm install -g @anthropic-ai/claude-code"));
+		return;
+	}
+
+	if (!IFileManager::Get().FileExists(*ClaudePath))
+	{
+		UE_LOG(LogUnrealClaude, Error, TEXT("Claude path no longer exists: %s"), *ClaudePath);
+		ReportError(FString::Printf(TEXT("Claude CLI path invalid: %s"), *ClaudePath));
+		return;
+	}
+
+	FString CommandLine = BuildCommandLine(CurrentConfig);
+
+	UE_LOG(LogUnrealClaude, Log, TEXT("Async executing Claude: %s %s"), *ClaudePath, *CommandLine);
+
+	// Set working directory
+	FString WorkingDir = CurrentConfig.WorkingDirectory;
+	if (WorkingDir.IsEmpty())
+	{
+		WorkingDir = FPaths::ProjectDir();
+	}
+
+	// Create pipes for stdout capture
+	if (!CreateProcessPipes())
+	{
+		ReportError(TEXT("Failed to create pipe for Claude process"));
+		return;
+	}
+
+	// Build and launch the process
+	FString FullCommand = FString::Printf(TEXT("\"%s\" %s"), *ClaudePath, *CommandLine);
+	UE_LOG(LogUnrealClaude, Log, TEXT("Full command: %s"), *FullCommand);
+	UE_LOG(LogUnrealClaude, Log, TEXT("Working directory: %s"), *WorkingDir);
+
+	if (!LaunchProcess(FullCommand, WorkingDir))
+	{
+		close((int)(intptr_t)ReadPipe);
+		close((int)(intptr_t)WritePipe);
+		close((int)(intptr_t)StdInReadPipe);
+		close((int)(intptr_t)StdInWritePipe);
+		ReadPipe = nullptr;
+		WritePipe = nullptr;
+		StdInReadPipe = nullptr;
+		StdInWritePipe = nullptr;
+
+		// Build detailed error message for chat display
+		FString ErrorMsg = FString::Printf(
+			TEXT("Failed to start Claude process.\n\n")
+			TEXT("Error: %s\n\n")
+			TEXT("Claude Path: %s\n")
+			TEXT("Working Dir: %s\n\n")
+			TEXT("Command (truncated): %.200s..."),
+			*GetMacErrorMessage(LastProcessError),
+			*ClaudePath,
+			*WorkingDir,
+			*FullCommand
+		);
+		ReportError(ErrorMsg);
+		return;
+	}
+
+	// Write prompt to stdin (Claude -p reads from stdin if no prompt on command line)
+	int StdInWriteFd = (int)(intptr_t)StdInWritePipe;
+	if (StdInWriteFd > 0)
+	{
+		FString FullPrompt;
+
+		// Include system prompt context if present
+		if (!SystemPromptFilePath.IsEmpty())
+		{
+			FString SystemPromptContent;
+			if (FFileHelper::LoadFileToString(SystemPromptContent, *SystemPromptFilePath))
+			{
+				FullPrompt = FString::Printf(TEXT("[CONTEXT]\n%s\n[/CONTEXT]\n\n"), *SystemPromptContent);
+			}
+		}
+
+		// Add user prompt
+		if (!PromptFilePath.IsEmpty())
+		{
+			FString PromptContent;
+			if (FFileHelper::LoadFileToString(PromptContent, *PromptFilePath))
+			{
+				FullPrompt += PromptContent;
+			}
+		}
+
+		// Write combined prompt to stdin
+		if (!FullPrompt.IsEmpty())
+		{
+			FTCHARToUTF8 Utf8Prompt(*FullPrompt);
+			ssize_t BytesWritten = write(StdInWriteFd, Utf8Prompt.Get(), Utf8Prompt.Length());
+			UE_LOG(LogUnrealClaude, Log, TEXT("Wrote %d bytes to Claude stdin (system: %d chars, user: %d chars)"),
+				(int)BytesWritten, CurrentConfig.SystemPrompt.Len(), CurrentConfig.Prompt.Len());
+		}
+
+		// Close stdin write pipe to signal EOF to Claude
+		close(StdInWriteFd);
+		StdInWritePipe = nullptr;
+	}
+
+	// Clear temp file paths
+	SystemPromptFilePath.Empty();
+	PromptFilePath.Empty();
+
+	// Read output until process completes
+	FString FullOutput = ReadProcessOutput();
+
+	// Get exit code
+	int Status;
+	pid_t Pid = (pid_t)(intptr_t)ProcessHandle;
+	waitpid(Pid, &Status, 0);
+	int ExitCode = WIFEXITED(Status) ? WEXITSTATUS(Status) : -1;
+
+	// Cleanup handles
+	close((int)(intptr_t)ReadPipe);
+	ReadPipe = nullptr;
+	ProcessHandle = nullptr;
+
+	// Report completion
+	bool bSuccess = (ExitCode == 0) && !StopTaskCounter.GetValue();
+	ReportCompletion(FullOutput, bSuccess);
+
+#endif // PLATFORM_WINDOWS || PLATFORM_MAC
 }
 
 // FClaudeCodeSubsystem is now in ClaudeSubsystem.cpp

@@ -8,7 +8,7 @@
 #include "HAL/RunnableThread.h"
 
 /**
- * Async runner for Claude Code CLI commands (Windows implementation)
+ * Async runner for Claude Code CLI commands (Windows and macOS implementation)
  * Executes 'claude -p' in print mode and captures output
  * Implements IClaudeRunner interface for abstraction
  */
@@ -47,7 +47,7 @@ private:
 	void ExecuteProcess();
 	void CleanupHandles();
 
-#if PLATFORM_WINDOWS
+#if PLATFORM_WINDOWS || PLATFORM_MAC
 	/** Create pipes for process stdout/stderr capture */
 	bool CreateProcessPipes();
 
@@ -72,14 +72,16 @@ private:
 	FThreadSafeCounter StopTaskCounter;
 	TAtomic<bool> bIsExecuting;
 
-	// Process handles for cancellation (Windows HANDLE stored as void*)
+	// Process handles for cancellation
+	// Windows: HANDLE stored as void*
+	// macOS: file descriptors stored as intptr_t in void*, PID for ProcessHandle
 	void* ProcessHandle;
 	void* ReadPipe;
 	void* WritePipe;
 	void* StdInReadPipe;
 	void* StdInWritePipe;
 
-	// Last Windows error code for detailed error reporting
+	// Last error code for detailed error reporting (Windows error code or errno on macOS)
 	uint32 LastProcessError = 0;
 
 	// Temp file paths for prompts (to avoid command line length limits)

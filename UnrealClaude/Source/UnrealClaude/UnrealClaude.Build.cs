@@ -63,7 +63,7 @@ public class UnrealClaude : ModuleRules
 			}
 		);
 
-		// Windows only
+		// Windows
 		if (Target.Platform == UnrealTargetPlatform.Win64)
 		{
 			PrivateDependencyModuleNames.Add("ApplicationCore");
@@ -73,6 +73,12 @@ public class UnrealClaude : ModuleRules
 			{
 				PrivateDependencyModuleNames.Add("LiveCoding");
 			}
+		}
+
+		// macOS
+		if (Target.Platform == UnrealTargetPlatform.Mac)
+		{
+			PrivateDependencyModuleNames.Add("ApplicationCore");
 		}
 	}
 }

@@ -1,0 +1,2 @@
+# This directory will contain macOS binaries when built from source
+# Build the plugin with: ./Engine/Build/BatchFiles/RunUAT.sh BuildPlugin -Plugin="/path/to/UnrealClaude.uplugin" -Package="/output/path" -TargetPlatforms=Mac

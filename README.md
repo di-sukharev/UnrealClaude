@@ -2,7 +2,7 @@
 
 **Claude Code CLI integration for Unreal Engine 5.7** - Get AI coding assistance with built-in UE5.7 documentation context directly in the editor.
 
-> **Windows Only** - This plugin uses Windows-specific process APIs to execute the Claude Code CLI.
+> **Supported Platforms**: Windows and macOS (Intel & Apple Silicon)
 
 ## Overview
 
@@ -17,7 +17,7 @@ UnrealClaude integrates the [Claude Code CLI](https://docs.anthropic.com/en/docs
 - **Blueprint Editing** - Create and modify Blueprints, Animation Blueprints, state machines (Few bugs still, don't rely on fully)
 - **Asset Management** - Search assets, query dependencies and referencers
 - **Async Task Queue** - Long-running operations won't timeout (WIP)
-- **Script Execution** - Claude can write, compile (via Live Coding), and execute scripts with your permission
+- **Script Execution** - Claude can write, compile (via Live Coding on Windows), and execute scripts with your permission
 - **Session Persistence** - Conversation history saved across editor sessions
 - **Project-Aware** - Automatically gathers project context (modules, plugins, assets) and is able to see editor viewports
 - **Uses Claude Code Auth** - No separate API key management needed
@@ -51,7 +51,9 @@ claude -p "Hello, can you see me?"
 
 ### Option A: Copy to Project Plugins (Recommended)
 
-Prebuilt binaries for **UE 5.7 Win64** are included - no compilation required.
+Prebuilt binaries for **UE 5.7 Win64** are included - no compilation required on Windows.
+
+**macOS users**: You'll need to build from source (see below).
 
 1. Download or clone this repository
 2. Copy the `UnrealClaude` folder to your project's `Plugins` directory:
@@ -61,7 +63,8 @@ Prebuilt binaries for **UE 5.7 Win64** are included - no compilation required.
    ├── Source/
    └── Plugins/
        └── UnrealClaude/
-           ├── Binaries/Win64/    # Prebuilt binaries
+           ├── Binaries/Win64/    # Prebuilt Windows binaries
+           ├── Binaries/Mac/      # Built from source on macOS
            ├── Source/
            ├── Resources/
            ├── Config/
@@ -72,28 +75,48 @@ Prebuilt binaries for **UE 5.7 Win64** are included - no compilation required.
    cd YourProject/Plugins/UnrealClaude/Resources/mcp-bridge
    npm install
    ```
-4. Launch the editor - the plugin will load automatically
+4. Launch the editor - the plugin will load automatically (and compile on first launch if needed on macOS)
 
 ### Option B: Engine Plugin (All Projects)
 
-Copy to your engine's plugins folder:
+**Windows:**
 ```
 C:\Program Files\Epic Games\UE_5.7\Engine\Plugins\Marketplace\UnrealClaude\
 ```
 
+**macOS:**
+```
+/Users/Shared/Epic Games/UE_5.7/Engine/Plugins/Marketplace/UnrealClaude/
+```
+
 Then install the MCP bridge dependencies:
 ```bash
+# Windows
 cd "C:\Program Files\Epic Games\UE_5.7\Engine\Plugins\Marketplace\UnrealClaude\Resources\mcp-bridge"
+npm install
+
+# macOS
+cd "/Users/Shared/Epic Games/UE_5.7/Engine/Plugins/Marketplace/UnrealClaude/Resources/mcp-bridge"
 npm install
 ```
 
 ### Building from Source
 
-If you need to rebuild (different UE version, modifications, etc.):
+If you need to rebuild (different UE version, modifications, macOS, etc.):
+
+**Windows:**
 ```bash
 # From UE installation directory
 Engine\Build\BatchFiles\RunUAT.bat BuildPlugin -Plugin="PATH\TO\UnrealClaude.uplugin" -Package="OUTPUT\PATH" -TargetPlatforms=Win64
 ```
+
+**macOS:**
+```bash
+# From UE installation directory
+./Engine/Build/BatchFiles/RunUAT.sh BuildPlugin -Plugin="/path/to/UnrealClaude.uplugin" -Package="/output/path" -TargetPlatforms=Mac
+```
+
+Alternatively, simply copy the plugin to your project's Plugins folder and open your project - Unreal Engine will automatically compile the plugin on first launch.
 
 ## Usage
 
@@ -372,8 +395,14 @@ claude -p --skip-permissions \
 ### "Claude CLI not found"
 
 1. Verify Claude is installed: `claude --version`
-2. Check it's in your PATH: `where claude`
+2. Check it's in your PATH:
+   - **Windows:** `where claude`
+   - **macOS:** `which claude`
 3. Restart Unreal Editor after installation
+
+The plugin searches these locations automatically:
+- **Windows:** `%USERPROFILE%\.local\bin`, `%APPDATA%\npm`, PATH directories
+- **macOS:** `~/.local/bin`, `/usr/local/bin`, `/opt/homebrew/bin`, `~/.npm-global/bin`, PATH directories
 
 ### "Authentication required"
 
@@ -385,7 +414,7 @@ Claude Code executes in your project directory and may read files for context. L
 
 ### Plugin doesn't compile
 
-Ensure you're on Unreal Engine 5.7 for Windows. This plugin uses Windows-specific APIs.
+Ensure you're on Unreal Engine 5.7 for Windows or macOS (Intel or Apple Silicon).
 
 ### MCP Server not starting
 
@@ -418,7 +447,8 @@ If Claude says the MCP tools are in its instructions but not in its function lis
 
 Feel free to fork for your own needs! Possible areas for improvement:
 
-- [ ] Mac/Linux support
+- [x] macOS support (Intel & Apple Silicon)
+- [ ] Linux support
 - [ ] Streaming output display
 - [ ] Context menu integration (right-click on code)
 - [ ] Blueprint node for runtime Claude queries
@@ -430,5 +460,5 @@ MIT License - See [LICENSE](UnrealClaude/LICENSE) file.
 
 ## Credits
 
-- Built for Unreal Engine 5.7
+- Built for Unreal Engine 5.7 (Windows & macOS)
 - Integrates with [Claude Code](https://claude.ai/code) by Anthropic
